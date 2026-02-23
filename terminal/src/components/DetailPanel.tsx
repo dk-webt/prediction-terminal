@@ -167,7 +167,7 @@ function EventDetail({ ev }: { ev: NormalizedEvent }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export default function DetailPanel() {
+export default function DetailPanel({ focused }: { focused: boolean }) {
   const { activeView, selectedIndex, arbResults, compareResults, pmEvents, ksEvents } = useStore()
 
   let content: React.ReactNode = null
@@ -198,7 +198,7 @@ export default function DetailPanel() {
   }
 
   return (
-    <div className="panel detail-panel">
+    <div className={`panel detail-panel${focused ? ' focused' : ''}`}>
       <div className="panel-header">
         <span className="panel-title">DETAIL</span>
       </div>

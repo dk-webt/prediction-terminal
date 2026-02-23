@@ -116,6 +116,12 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  border: 1px solid transparent;
+  transition: border-color 0.1s;
+}
+
+.panel.focused {
+  border-color: var(--amber);
 }
 
 .panel-header {

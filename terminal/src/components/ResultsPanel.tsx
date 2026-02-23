@@ -298,7 +298,7 @@ const VIEW_LABELS: Record<string, string> = {
   CACHE: 'CACHE',
 }
 
-export default function ResultsPanel() {
+export default function ResultsPanel({ focused }: { focused: boolean }) {
   const { activeView, loading, progressMsg, errorMsg, arbResults, compareResults } = useStore()
 
   const count =
@@ -309,7 +309,7 @@ export default function ResultsPanel() {
       : 0
 
   return (
-    <div className="panel results-panel">
+    <div className={`panel results-panel${focused ? ' focused' : ''}`}>
       <div className="panel-header">
         <span className="panel-title">{VIEW_LABELS[activeView] ?? activeView}</span>
         {count > 0 && <span className="panel-count">{count}</span>}

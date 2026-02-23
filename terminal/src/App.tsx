@@ -244,9 +244,16 @@ export default function App() {
       } else if (e.key === 'Tab') {
         if (tag !== 'INPUT') {
           e.preventDefault()
-          useStore.getState().setActivePanel(
-            (((useStore.getState().activePanel + 1) % 3) as 0 | 1 | 2)
-          )
+          const s = useStore.getState()
+          const next = ((s.activePanel + 1) % 3) as 0 | 1 | 2
+          s.setActivePanel(next)
+          // Sync activeView so ↑↓ navigates the right data for the focused panel
+          if (next === 0) {
+            if (s.ksEvents.length && !s.pmEvents.length) s.setActiveView('KS')
+            else s.setActiveView('PM')
+          }
+          // Panel 1 keeps whatever view is already showing (ARB/CMP/HELP/CACHE)
+          // Panel 2 (detail) has no navigable rows
         }
       } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         if (tag !== 'INPUT') {

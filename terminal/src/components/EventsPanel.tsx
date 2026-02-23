@@ -15,9 +15,10 @@ interface Props {
   source: 'PM' | 'KS'
   className: string
   runCommand: (cmd: string) => void
+  focused: boolean
 }
 
-export default function EventsPanel({ source, className, runCommand }: Props) {
+export default function EventsPanel({ source, className, runCommand, focused }: Props) {
   const { pmEvents, ksEvents, activeView, selectedIndex, setSelectedIndex, setActiveView } =
     useStore()
 
@@ -32,7 +33,7 @@ export default function EventsPanel({ source, className, runCommand }: Props) {
   }
 
   return (
-    <div className={`panel ${className}`}>
+    <div className={`panel ${className}${focused ? ' focused' : ''}`}>
       <div className="panel-header">
         <span className="panel-title">{label}</span>
         {events.length > 0 && (
