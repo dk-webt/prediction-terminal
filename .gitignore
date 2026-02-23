@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+.cache/
+
+# Electron terminal
+terminal/node_modules/
+terminal/out/
+terminal/.vite/
+
+# Root-level npm artifacts (if any)
+node_modules/
+package-lock.json

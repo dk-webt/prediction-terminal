@@ -1,0 +1,9 @@
+requests
+rapidfuzz
+rich
+python-dotenv
+google-genai
+numpy
+fastapi
+uvicorn[standard]
+websockets

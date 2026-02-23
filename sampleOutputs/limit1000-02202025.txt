@@ -1,0 +1,1069 @@
+╭──────────────────────────────╮
+│ Prediction Market Comparator │
+│ Polymarket  ↔  Kalshi        │
+╰──────────────────────────────╯
+
+Fetching events from both platforms (limit=1000 each)…
+  ✓ Polymarket: 1000 events
+  ✓ Kalshi:     1000 events
+
+Step 1: Matching events via semantic embeddings (min score: 0.75)…
+  Found 96 matched event pairs
+Step 2: Matching sub-markets within each pair (min score: 0.82)…
+  Found 326 matched brackets
+
+─────────────────────────────────────────────────────────────────────── Who will Trump nominate as Fed Chair?  (event score: 1.000) ───────────────────────────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Trump nominate Stephen Miran as the next Fed    Yes 0.2¢ / No     0.985    Yes 1.0¢ / No    Will Trump next nominate Stephen Miran as Fed       
+  chair?                                                   99.7¢                      99.0¢        Chair?                                              
+  Will Trump nominate Rick Rieder as the next Fed      Yes 7.5¢ / No     0.979    Yes 1.0¢ / No    Will Trump next nominate Rick Rieder as Fed Chair?  
+  chair?                                                   92.5¢                      99.0¢                                                            
+  Will Trump nominate Michelle Bowman as the next      Yes 0.3¢ / No     0.978    Yes 1.0¢ / No    Will Trump next nominate Michelle Bowman as Fed     
+  Fed chair?                                               99.7¢                      99.0¢        Chair?                                              
+  Will Trump nominate Kevin Hassett as the next Fed    Yes 0.2¢ / No     0.978    Yes 1.0¢ / No    Will Trump next nominate Kevin Hassett as Fed       
+  chair?                                                   99.8¢                      99.0¢        Chair?                                              
+  Will Trump nominate Judy Shelton as the next Fed     Yes 4.3¢ / No     0.975    Yes 5.0¢ / No    Will Trump next nominate Judy Shelton as Fed        
+  chair?                                                   94.0¢                      95.0¢        Chair?                                              
+  Will Trump nominate Kevin Warsh as the next Fed      Yes 93.4¢ / No    0.974    Yes 94.0¢ / No   Will Trump next nominate Kevin Warsh as Fed Chair?  
+  chair?                                                    6.6¢                       6.0¢                                                            
+  Will Trump nominate Christopher Waller as the next   Yes 0.3¢ / No     0.974    Yes 1.0¢ / No    Will Trump next nominate Christopher Waller as Fed  
+  Fed chair?                                               99.7¢                      99.0¢        Chair?                                              
+  archWill Trump nominate James Bullard as the next    Yes 4.0¢ / No     0.931    Yes 1.0¢ / No    Will Trump next nominate James Bullard as Fed       
+  Fed chair?                                               96.2¢                      99.0¢        Chair?                                              
+                                                                                                                                                       
+─────────────────────────── 2nd place in first round of Texas Republican Senate Primary?  ↔  2nd place in first round of Texas Senate Republican primary?  (event score: 0.995) ───────────────────────────
+                                                                                                                                          
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                         
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Wesley Hunt come in 2nd in the 2026 Texas       Yes 5.4¢ / No     0.893    Yes 10.0¢ / No   Will Wesley Hunt finish 2nd in Texas?  
+  Republican Primary?                                      94.5¢                      93.0¢                                               
+  Will Ken Paxton come in 2nd in the 2026 Texas        Yes 14.0¢ / No    0.884    Yes 18.0¢ / No   Will Ken Paxton finish 2nd in Texas?   
+  Republican Primary?                                      84.5¢                      82.0¢                                               
+  Will John Cornyn come in 2nd in the 2026 Texas       Yes 78.0¢ / No    0.882    Yes 77.0¢ / No   Will John Cornyn finish 2nd in Texas?  
+  Republican Primary?                                      23.5¢                      20.0¢                                               
+                                                                                                                                          
+─────────────────────────── 3rd place in first round of Texas Republican Senate Primary?  ↔  3rd place in first round of Texas Senate Republican primary?  (event score: 0.995) ───────────────────────────
+                                                                                                                                          
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                         
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Wesley Hunt come in 3rd in the 2026 Texas       Yes 91.0¢ / No    0.900    Yes 89.0¢ / No   Will Wesley Hunt finish 3rd in Texas?  
+  Republican Primary?                                       9.5¢                       9.0¢                                               
+  Will John Cornyn come in 3rd in the 2026 Texas       Yes 6.0¢ / No     0.898    Yes 12.0¢ / No   Will John Cornyn finish 3rd in Texas?  
+  Republican Primary?                                      92.5¢                      89.0¢                                               
+  Will Ken Paxton come in 3rd in the 2026 Texas        Yes 0.4¢ / No     0.890    Yes 7.0¢ / No    Will Ken Paxton finish 3rd in Texas?   
+  Republican Primary?                                      99.6¢                      94.0¢                                               
+                                                                                                                                          
+─────────────────────────────────────────────── How high will US unemployment go in 2026?  ↔  How high will unemployment get in 2026?  (event score: 0.976) ───────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will US unemployment reach at least 10.0% in 2026?   Yes 6.5¢ / No     0.842    Yes 5.0¢ / No    How high will unemployment get before 2027?: Above  
+                                                           93.3¢                      94.0¢        10%                                                 
+  Will US unemployment reach at least 7.0% in 2026?    Yes 10.0¢ / No    0.840    Yes 18.0¢ / No   How high will unemployment get before 2027?: Above  
+                                                           89.5¢                      81.0¢        6%                                                  
+                                                                                                                                                       
+───────────────────────────────────────────── Who will be the next to leave the Trump Cabinet?  ↔  Who will leave Trump's Cabinet next?  (event score: 0.970) ─────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Susie Wiles be the next to leave the Trump      Yes 0.6¢ / No     0.950    Yes 3.0¢ / No    Will Susie Wiles be the first person to leave the   
+  Cabinet before 2027?                                     98.8¢                      97.0¢        Trump Cabinet?                                      
+  Will Brooke Rollins be the next to leave the Trump   Yes 1.4¢ / No     0.947    Yes 1.0¢ / No    Will Brooke Rollins be the first person to leave    
+  Cabinet before 2027?                                     99.0¢                      98.0¢        the Trump Cabinet?                                  
+  Will Jamieson Greer be the next to leave the Trump   Yes 0.7¢ / No     0.947    Yes 1.0¢ / No    Will Jamieson Greer be the first person to leave    
+  Cabinet before 2027?                                     98.2¢                      98.0¢        the Trump Cabinet?                                  
+  Will Howard Lutnick be the next to leave the Trump   Yes 13.5¢ / No    0.943    Yes 14.0¢ / No   Will Howard Lutnick be the first person to leave    
+  Cabinet before 2027?                                     86.8¢                      83.0¢        the Trump Cabinet?                                  
+  Will Chris Wright be the next to leave the Trump     Yes 1.0¢ / No     0.943    Yes 1.0¢ / No    Will Chris Wright be the first person to leave the  
+  Cabinet before 2027?                                     99.2¢                      98.0¢        Trump Cabinet?                                      
+  Will Lori Chavez-DeRemer be the next to leave the    Yes 10.0¢ / No    0.940    Yes 15.0¢ / No   Will Lori Chavez-DeRemer be the first person to     
+  Trump Cabinet before 2027?                               87.0¢                      85.0¢        leave the Trump Cabinet?                            
+  Will Scott Turner be the next to leave the Trump     Yes 0.8¢ / No     0.940    Yes 1.0¢ / No    Will Scott Turner be the first person to leave the  
+  Cabinet before 2027?                                     99.1¢                      98.0¢        Trump Cabinet?                                      
+  Will Doug Collins be the next to leave the Trump     Yes 0.7¢ / No     0.938    Yes 1.0¢ / No    Will Doug Collins be the first person to leave the  
+  Cabinet before 2027?                                     98.0¢                      98.0¢        Trump Cabinet?                                      
+  Will Sean Duffy be the next to leave the Trump       Yes 0.7¢ / No     0.937    Yes 3.0¢ / No    Will Sean Duffy be the first person to leave the    
+  Cabinet before 2027?                                     98.5¢                      97.0¢        Trump Cabinet?                                      
+  Will Scott Bessent be the next to leave the Trump    Yes 0.5¢ / No     0.936    Yes 1.0¢ / No    Will Scott Bessent be the first person to leave     
+  Cabinet before 2027?                                     98.7¢                      98.0¢        the Trump Cabinet?                                  
+  Will Lee Zeldin be the next to leave the Trump       Yes 1.3¢ / No     0.934    Yes 2.0¢ / No    Will Lee Zeldin be the first person to leave the    
+  Cabinet before 2027?                                     98.6¢                      98.0¢        Trump Cabinet?                                      
+  Will Doug Burgum be the next to leave the Trump      Yes 0.7¢ / No     0.933    Yes 1.0¢ / No    Will Doug Burgum be the first person to leave the   
+  Cabinet before 2027?                                     99.7¢                      98.0¢        Trump Cabinet?                                      
+  Will Marco Rubio be the next to leave the Trump      Yes 2.0¢ / No     0.933    Yes 2.0¢ / No    Will Marco Rubio be the first person to leave the   
+  Cabinet before 2027?                                     97.9¢                      98.0¢        Trump Cabinet?                                      
+  Will Mike Waltz be the next to leave the Trump       Yes 0.5¢ / No     0.931    Yes 1.0¢ / No    Will Mike Waltz be the first person to leave the    
+  Cabinet before 2027?                                     98.8¢                      98.0¢        Trump Cabinet?                                      
+  Will Pam Bondi be the next to leave the Trump        Yes 11.0¢ / No    0.930    Yes 20.0¢ / No   Will Pam Bondi be the first person to leave the     
+  Cabinet before 2027?                                     91.0¢                      80.0¢        Trump Cabinet?                                      
+  Will Pete Hegseth be the next to leave the Trump     Yes 3.0¢ / No     0.929    Yes 5.0¢ / No    Will Pete Hegseth be the first person to leave the  
+  Cabinet before 2027?                                     98.0¢                      95.0¢        Trump Cabinet?                                      
+  Will Kristi Noem be the next to leave the Trump      Yes 26.1¢ / No    0.929    Yes 18.0¢ / No   Will Kristi Noem be the first person to leave the   
+  Cabinet before 2027?                                     73.0¢                      82.0¢        Trump Cabinet?                                      
+  Will Tulsi Gabbard be the next to leave the Trump    Yes 9.2¢ / No     0.925    Yes 8.0¢ / No    Will Tulsi Gabbard be the first person to leave     
+  Cabinet before 2027?                                     92.5¢                      93.0¢        the Trump Cabinet?                                  
+  Will Kelly Loeffler be the next to leave the Trump   Yes 0.5¢ / No     0.922    Yes 1.0¢ / No    Will Kelly Loeffler be the first person to leave    
+  Cabinet before 2027?                                     99.7¢                      98.0¢        the Trump Cabinet?                                  
+  Will Robert F. Kennedy Jr. be the next to leave      Yes 1.2¢ / No     0.915    Yes 4.0¢ / No    Will Robert F. Kennedy Jr. be the first person to   
+  the Trump Cabinet before 2027?                           96.1¢                      96.0¢        leave the Trump Cabinet?                            
+  Will Linda McMahon be the next to leave the Trump    Yes 0.7¢ / No     0.915    Yes 1.0¢ / No    Will Linda McMahon be the first person to leave     
+  Cabinet before 2027?                                     99.6¢                      98.0¢        the Trump Cabinet?                                  
+  Will John Ratcliffe be the next to leave the Trump   Yes 0.5¢ / No     0.913    Yes 1.0¢ / No    Will John Ratcliffe be the first person to leave    
+  Cabinet before 2027?                                     99.0¢                      99.0¢        the Trump Cabinet?                                  
+  Will Russell T. Vought be the next to leave the      Yes 1.1¢ / No     0.912    Yes 1.0¢ / No    Will Russell Vought be the first person to leave    
+  Trump Cabinet before 2027?                               98.0¢                      98.0¢        the Trump Cabinet?                                  
+                                                                                                                                                       
+────────────────────────────────────────────────── Democratic Presidential Nominee 2028  ↔  2028 Democratic nominee for President?  (event score: 0.939) ──────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Rahm Emanuel win the 2028 Democratic            Yes 1.3¢ / No     0.990    Yes 3.0¢ / No    Will Rahm Emanuel be the Democratic Presidential    
+  presidential nomination?                                 98.7¢                      97.0¢        nominee in 2028?                                    
+  Will Jon Stewart win the 2028 Democratic             Yes 2.2¢ / No     0.989    Yes 3.0¢ / No    Will Jon Stewart be the Democratic Presidential     
+  presidential nomination?                                 97.9¢                      97.0¢        nominee in 2028?                                    
+  Will Ro Khanna win the 2028 Democratic               Yes 1.2¢ / No     0.989    Yes 3.0¢ / No    Will Ro Khanna be the Democratic Presidential       
+  presidential nomination?                                 98.8¢                      97.0¢        nominee in 2028?                                    
+  Will Zohran Mamdani win the 2028 Democratic          Yes 1.0¢ / No     0.989    Yes 2.0¢ / No    Will Zohran Mamdani be the Democratic Presidential  
+  presidential nomination?                                 99.0¢                      98.0¢        nominee in 2028?                                    
+  Will Stephen A. Smith win the 2028 Democratic        Yes 1.2¢ / No     0.988    Yes 3.0¢ / No    Will Stephen A. Smith be the Democratic             
+  presidential nomination?                                 98.8¢                      97.0¢        Presidential nominee in 2028?                       
+  Will Alexandria Ocasio-Cortez win the 2028           Yes 8.8¢ / No     0.987    Yes 11.0¢ / No   Will Alexandria Ocasio-Cortez be the Democratic     
+  Democratic presidential nomination?                      91.2¢                      89.0¢        Presidential nominee in 2028?                       
+  Will Mark Cuban win the 2028 Democratic              Yes 1.1¢ / No     0.987    Yes 1.0¢ / No    Will Mark Cuban be the Democratic Presidential      
+  presidential nomination?                                 98.9¢                      99.0¢        nominee in 2028?                                    
+  Will Roy Cooper win the 2028 Democratic              Yes 0.9¢ / No     0.987    Yes 1.0¢ / No    Will Roy Cooper be the Democratic Presidential      
+  presidential nomination?                                 99.1¢                      99.0¢        nominee in 2028?                                    
+  Will James Talarico win the 2028 Democratic          Yes 0.9¢ / No     0.987    Yes 2.0¢ / No    Will James Talarico be the Democratic Presidential  
+  presidential nomination?                                 99.1¢                      98.0¢        nominee in 2028?                                    
+  Will Phil Murphy win the 2028 Democratic             Yes 1.1¢ / No     0.986    Yes 1.0¢ / No    Will Phil Murphy be the Democratic Presidential     
+  presidential nomination?                                 99.0¢                      99.0¢        nominee in 2028?                                    
+  Will Raphael Warnock win the 2028 Democratic         Yes 0.9¢ / No     0.986    Yes 2.0¢ / No    Will Raphael Warnock be the Democratic              
+  presidential nomination?                                 99.2¢                      98.0¢        Presidential nominee in 2028?                       
+  Will Gavin Newsom win the 2028 Democratic            Yes 27.4¢ / No    0.986    Yes 30.0¢ / No   Will Gavin Newsom be the Democratic Presidential    
+  presidential nomination?                                 72.5¢                      69.0¢        nominee in 2028?                                    
+  Will Liz Cheney win the 2028 Democratic              Yes 0.9¢ / No     0.986    Yes 1.0¢ / No    Will Liz Cheney be the Democratic Presidential      
+  presidential nomination?                                 99.1¢                      99.0¢        nominee in 2028?                                    
+  Will Jared Polis win the 2028 Democratic             Yes 0.9¢ / No     0.986    Yes 1.0¢ / No    Will Jared Polis be the Democratic Presidential     
+  presidential nomination?                                 99.1¢                      99.0¢        nominee in 2028?                                    
+  Will J.B. Pritzker win the 2028 Democratic           Yes 2.4¢ / No     0.986    Yes 6.0¢ / No    Will J.B. Pritzker be the Democratic Presidential   
+  presidential nomination?                                 97.7¢                      94.0¢        nominee in 2028?                                    
+  Will Gina Raimondo win the 2028 Democratic           Yes 0.9¢ / No     0.986    Yes 1.0¢ / No    Will Gina Raimondo be the Democratic Presidential   
+  presidential nomination?                                 99.1¢                      99.0¢        nominee in 2028?                                    
+  Will Chris Murphy win the 2028 Democratic            Yes 0.9¢ / No     0.986    Yes 2.0¢ / No    Will Chris Murphy be the Democratic Presidential    
+  presidential nomination?                                 99.1¢                      98.0¢        nominee in 2028?                                    
+  Will Josh Shapiro win the 2028 Democratic            Yes 4.4¢ / No     0.985    Yes 7.0¢ / No    Will Josh Shapiro be the Democratic Presidential    
+  presidential nomination?                                 95.7¢                      93.0¢        nominee in 2028?                                    
+  Will Cory Booker win the 2028 Democratic             Yes 1.1¢ / No     0.985    Yes 1.0¢ / No    Will Cory Booker be the Democratic Presidential     
+  presidential nomination?                                 99.0¢                      98.0¢        nominee in 2028?                                    
+  Will Ruben Gallego win the 2028 Democratic           Yes 1.6¢ / No     0.985    Yes 3.0¢ / No    Will Ruben Gallego be the Democratic Presidential   
+  presidential nomination?                                 98.5¢                      97.0¢        nominee in 2028?                                    
+  Will Andy Beshear win the 2028 Democratic            Yes 2.5¢ / No     0.985    Yes 4.0¢ / No    Will Andy Beshear be the Democratic Presidential    
+  presidential nomination?                                 97.4¢                      96.0¢        nominee in 2028?                                    
+  Will Gretchen Whitmer win the 2028 Democratic        Yes 2.2¢ / No     0.985    Yes 4.0¢ / No    Will Gretchen Whitmer be the Democratic             
+  presidential nomination?                                 97.9¢                      96.0¢        Presidential nominee in 2028?                       
+  Will Mark Kelly win the 2028 Democratic              Yes 2.6¢ / No     0.984    Yes 4.0¢ / No    Will Mark Kelly be the Democratic Presidential      
+  presidential nomination?                                 97.5¢                      96.0¢        nominee in 2028?                                    
+  Will Jon Ossoff win the 2028 Democratic              Yes 4.5¢ / No     0.984    Yes 7.0¢ / No    Will Jon Ossoff be the Democratic Presidential      
+  presidential nomination?                                 95.5¢                      93.0¢        nominee in 2028?                                    
+  Will Michelle Obama win the 2028 Democratic          Yes 1.3¢ / No     0.984    Yes 1.0¢ / No    Will Michelle Obama be the Democratic Presidential  
+  presidential nomination?                                 98.7¢                      99.0¢        nominee in 2028?                                    
+  Will Tim Walz win the 2028 Democratic presidential   Yes 0.8¢ / No     0.984    Yes 1.0¢ / No    Will Tim Walz be the Democratic Presidential        
+  nomination?                                              99.2¢                      99.0¢        nominee in 2028?                                    
+  Will Pete Buttigieg win the 2028 Democratic          Yes 3.8¢ / No     0.984    Yes 5.0¢ / No    Will Pete Buttigieg be the Democratic Presidential  
+  presidential nomination?                                 96.2¢                      95.0¢        nominee in 2028?                                    
+  Will Bernie Sanders win the 2028 Democratic          Yes 0.8¢ / No     0.983    Yes 1.0¢ / No    Will Bernie Sanders be the Democratic Presidential  
+  presidential nomination?                                 99.2¢                      99.0¢        nominee in 2028?                                    
+  Will Wes Moore win the 2028 Democratic               Yes 1.7¢ / No     0.983    Yes 4.0¢ / No    Will Wes Moore be the Democratic Presidential       
+  presidential nomination?                                 98.3¢                      96.0¢        nominee in 2028?                                    
+  Will Barack Obama win the 2028 Democratic            Yes 1.1¢ / No     0.983    Yes 1.0¢ / No    Will Barack Obama be the Democratic Presidential    
+  presidential nomination?                                 99.0¢                      99.0¢        nominee in 2028?                                    
+  Will John Fetterman win the 2028 Democratic          Yes 0.8¢ / No     0.983    Yes 1.0¢ / No    Will John Fetterman be the Democratic Presidential  
+  presidential nomination?                                 99.2¢                      99.0¢        nominee in 2028?                                    
+  Will LeBron James win the 2028 Democratic            Yes 0.9¢ / No     0.981    Yes 1.0¢ / No    Will Lebron James be the Democratic Presidential    
+  presidential nomination?                                 99.1¢                      99.0¢        nominee in 2028?                                    
+  Will Hunter Biden win the 2028 Democratic            Yes 0.9¢ / No     0.980    Yes 1.0¢ / No    Will Hunter Biden be the Democratic Presidential    
+  presidential nomination?                                 99.1¢                      99.0¢        nominee in 2028?                                    
+  Will Kamala Harris win the 2028 Democratic           Yes 5.9¢ / No     0.979    Yes 7.0¢ / No    Will Kamala Harris be the Democratic Presidential   
+  presidential nomination?                                 94.2¢                      93.0¢        nominee in 2028?                                    
+  Will Hillary Clinton win the 2028 Democratic         Yes 0.9¢ / No     0.964    Yes 1.0¢ / No    Will Hilary Clinton be the Democratic Presidential  
+  presidential nomination?                                 99.2¢                      99.0¢        nominee in 2028?: Hillary Clinton                   
+  Will Dwayne 'The Rock' Johnson win the 2028          Yes 1.4¢ / No     0.887    Yes 1.0¢ / No    Will Dwayne Johnson be the nominee for the          
+  Democratic presidential nomination?                      98.6¢                      99.0¢        Presidency for the Democratic party?                
+  Will Andrew Yang win the 2028 Democratic             Yes 1.0¢ / No     0.830    Yes 1.0¢ / No    Will Jamie Dimon be the Democratic Presidential     
+  presidential nomination?                                 99.1¢                      99.0¢        nominee in 2028?                                    
+  Will Chelsea Clinton win the 2028 Democratic         Yes 0.9¢ / No     0.829    Yes 1.0¢ / No    Will Elissa Slotkin be the Democratic Presidential  
+  presidential nomination?                                 99.2¢                      99.0¢        nominee in 2028?                                    
+                                                                                                                                                       
+─────────────────────────────────────────────────── Presidential Election Winner 2028  ↔  2028 U.S. Presidential Election winner?  (event score: 0.936) ───────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Vivek Ramaswamy win the 2028 US Presidential    Yes 0.8¢ / No     0.862    Yes 1.0¢ / No    Who will win the next presidential election?:       
+  Election?                                                99.2¢                      99.0¢        Vivek Ramaswamy                                     
+  Will Andy Beshear win the 2028 US Presidential       Yes 1.8¢ / No     0.859    Yes 3.0¢ / No    Who will win the next presidential election?: Andy  
+  Election?                                                98.2¢                      97.0¢        Beshear                                             
+  Will Gavin Newsom win the 2028 US Presidential       Yes 17.3¢ / No    0.857    Yes 21.0¢ / No   Who will win the next presidential election?:       
+  Election?                                                82.6¢                      79.0¢        Gavin Newsom                                        
+  Will Tim Walz win the 2028 US Presidential           Yes 0.9¢ / No     0.857    Yes 1.0¢ / No    Who will win the next presidential election?: Tim   
+  Election?                                                99.2¢                      99.0¢        Walz                                                
+  Will Josh Shapiro win the 2028 US Presidential       Yes 2.7¢ / No     0.856    Yes 4.0¢ / No    Who will win the next presidential election?: Josh  
+  Election?                                                97.4¢                      95.0¢        Shapiro                                             
+  Will Jon Ossoff win the 2028 US Presidential         Yes 2.1¢ / No     0.854    Yes 4.0¢ / No    Who will win the next presidential election?: Jon   
+  Election?                                                98.0¢                      96.0¢        Ossoff                                              
+  Will Wes Moore win the 2028 US Presidential          Yes 1.2¢ / No     0.853    Yes 2.0¢ / No    Who will win the next presidential election?: Wes   
+  Election?                                                98.8¢                      98.0¢        Moore                                               
+  Will Ron DeSantis win the 2028 US Presidential       Yes 1.4¢ / No     0.853    Yes 3.0¢ / No    Who will win the next presidential election?: Ron   
+  Election?                                                98.7¢                      97.0¢        DeSantis                                            
+  Will Glenn Youngkin win the 2028 US Presidential     Yes 0.9¢ / No     0.852    Yes 2.0¢ / No    Who will win the next presidential election?:       
+  Election?                                                99.1¢                      98.0¢        Glenn Youngkin                                      
+  Will Gretchen Whitmer win the 2028 US Presidential   Yes 1.4¢ / No     0.852    Yes 2.0¢ / No    Who will win the next presidential election?:       
+  Election?                                                98.7¢                      98.0¢        Gretchen Whitmer                                    
+  Will Nikki Haley win the 2028 US Presidential        Yes 1.1¢ / No     0.851    Yes 1.0¢ / No    Who will win the next presidential election?:       
+  Election?                                                99.0¢                      99.0¢        Nikki Haley                                         
+  Will Tulsi Gabbard win the 2028 US Presidential      Yes 0.8¢ / No     0.850    Yes 1.0¢ / No    Who will win the next presidential election?:       
+  Election?                                                99.2¢                      99.0¢        Tulsi Gabbard                                       
+  Will JB Pritzker win the 2028 US Presidential        Yes 1.4¢ / No     0.849    Yes 3.0¢ / No    Who will win the next presidential election?: J.B.  
+  Election?                                                98.5¢                      97.0¢        Pritzker                                            
+  Will Alexandria Ocasio-Cortez win the 2028 US        Yes 5.7¢ / No     0.848    Yes 6.0¢ / No    Who will win the next presidential election?:       
+  Presidential Election?                                   94.3¢                      94.0¢        Alexandria Ocasio-Cortez                            
+  Will JD Vance win the 2028 US Presidential           Yes 24.0¢ / No    0.846    Yes 22.0¢ / No   Who will win the next presidential election?: J.D.  
+  Election?                                                75.9¢                      77.0¢        Vance                                               
+  Will Pete Buttigieg win the 2028 US Presidential     Yes 2.2¢ / No     0.841    Yes 4.0¢ / No    Who will win the next presidential election?: Pete  
+  Election?                                                97.9¢                      96.0¢        Buttigieg                                           
+  Will Jamie Dimon win the 2028 US Presidential        Yes 1.1¢ / No     0.839    Yes 1.0¢ / No    Who will win the next presidential election?:       
+  Election?                                                98.9¢                      99.0¢        Jamie Dimon                                         
+  Will Kamala Harris win the 2028 US Presidential      Yes 3.2¢ / No     0.838    Yes 3.0¢ / No    Who will win the next presidential election?:       
+  Election?                                                96.7¢                      96.0¢        Kamala Harris                                       
+  Will Greg Abbott win the 2028 US Presidential        Yes 0.9¢ / No     0.836    Yes 1.0¢ / No    Who will win the next presidential election?: Greg  
+  Election?                                                99.1¢                      99.0¢        Abbott                                              
+  Will Marco Rubio win the 2028 US Presidential        Yes 7.4¢ / No     0.830    Yes 9.0¢ / No    Who will win the next presidential election?:       
+  Election?                                                92.5¢                      91.0¢        Marco Rubio                                         
+                                                                                                                                                       
+───────────────────────────────────────────────────────────────── NFL Champion 2027  ↔  2027 Pro Football Champion  (event score: 0.930) ──────────────────────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will the Seattle Seahawks win the 2027 NFL league    Yes 12.0¢ / No    0.930    Yes 10.0¢ / No   Will Seattle win the 2027 Pro Football              
+  championship?                                            88.5¢                      89.0¢        Championship?                                       
+  Will the New England Patriots win the 2027 NFL       Yes 6.0¢ / No     0.930    Yes 5.0¢ / No    Will New England win the 2027 Pro Football          
+  league championship?                                     93.5¢                      95.0¢        Championship?                                       
+  Will the Philadelphia Eagles win the 2027 NFL        Yes 5.0¢ / No     0.929    Yes 6.0¢ / No    Will Philadelphia win the 2027 Pro Football         
+  league championship?                                     95.0¢                      94.0¢        Championship?                                       
+  Will the Kansas City Chiefs win the 2027 NFL         Yes 5.8¢ / No     0.928    Yes 7.0¢ / No    Will Kansas City win the 2027 Pro Football          
+  league championship?                                     94.0¢                      93.0¢        Championship?                                       
+  Will the Pittsburgh Steelers win the 2027 NFL        Yes 0.9¢ / No     0.927    Yes 2.0¢ / No    Will Pittsburgh win the 2027 Pro Football           
+  league championship?                                     99.1¢                      98.0¢        Championship?                                       
+  Will the Tampa Bay Buccaneers win the 2027 NFL       Yes 1.5¢ / No     0.925    Yes 3.0¢ / No    Will Tampa Bay win the 2027 Pro Football            
+  league championship?                                     98.6¢                      97.0¢        Championship?                                       
+  Will the Dallas Cowboys win the 2027 NFL league      Yes 1.9¢ / No     0.923    Yes 3.0¢ / No    Will Dallas win the 2027 Pro Football               
+  championship?                                            98.2¢                      97.0¢        Championship?                                       
+  Will the Green Bay Packers win the 2027 NFL league   Yes 4.3¢ / No     0.923    Yes 6.0¢ / No    Will Green Bay win the 2027 Pro Football            
+  championship?                                            95.7¢                      94.0¢        Championship?                                       
+  Will the Baltimore Ravens win the 2027 NFL league    Yes 5.6¢ / No     0.922    Yes 6.0¢ / No    Will Baltimore win the 2027 Pro Football            
+  championship?                                            94.3¢                      94.0¢        Championship?                                       
+  Will the Minnesota Vikings win the 2027 NFL league   Yes 1.4¢ / No     0.921    Yes 2.0¢ / No    Will Minnesota win the 2027 Pro Football            
+  championship?                                            98.7¢                      98.0¢        Championship?                                       
+  Will the Detroit Lions win the 2027 NFL league       Yes 4.1¢ / No     0.920    Yes 6.0¢ / No    Will Detroit win the 2027 Pro Football              
+  championship?                                            95.8¢                      94.0¢        Championship?                                       
+  Will the Denver Broncos win the 2027 NFL league      Yes 3.6¢ / No     0.920    Yes 5.0¢ / No    Will Denver win the 2027 Pro Football               
+  championship?                                            96.4¢                      95.0¢        Championship?                                       
+  Will the San Francisco 49ers win the 2027 NFL        Yes 3.8¢ / No     0.917    Yes 7.0¢ / No    Will San Francisco win the 2027 Pro Football        
+  league championship?                                     95.9¢                      93.0¢        Championship?                                       
+  Will the New Orleans Saints win the 2027 NFL         Yes 0.7¢ / No     0.916    Yes 1.0¢ / No    Will New Orleans win the 2027 Pro Football          
+  league championship?                                     99.2¢                      99.0¢        Championship?                                       
+  Will the Cleveland Browns win the 2027 NFL league    Yes 0.8¢ / No     0.916    Yes 1.0¢ / No    Will Cleveland win the 2027 Pro Football            
+  championship?                                            99.2¢                      99.0¢        Championship?                                       
+  Will the Chicago Bears win the 2027 NFL league       Yes 2.8¢ / No     0.913    Yes 6.0¢ / No    Will Chicago win the 2027 Pro Football              
+  championship?                                            97.1¢                      94.0¢        Championship?                                       
+  Will the Jacksonville Jaguars win the 2027 NFL       Yes 3.7¢ / No     0.912    Yes 4.0¢ / No    Will Jacksonville win the 2027 Pro Football         
+  league championship?                                     96.5¢                      96.0¢        Championship?                                       
+  Will the Buffalo Bills win the 2027 NFL league       Yes 7.0¢ / No     0.912    Yes 8.0¢ / No    Will Buffalo win the 2027 Pro Football              
+  championship?                                            92.5¢                      92.0¢        Championship?                                       
+  Will the Atlanta Falcons win the 2027 NFL league     Yes 1.4¢ / No     0.910    Yes 2.0¢ / No    Will Atlanta win the 2027 Pro Football              
+  championship?                                            98.7¢                      98.0¢        Championship?                                       
+  Will the Carolina Panthers win the 2027 NFL league   Yes 0.7¢ / No     0.910    Yes 1.0¢ / No    Will Carolina win the 2027 Pro Football             
+  championship?                                            99.2¢                      99.0¢        Championship?                                       
+  Will the Cincinnati Bengals win the 2027 NFL         Yes 2.4¢ / No     0.910    Yes 3.0¢ / No    Will Cincinnati win the 2027 Pro Football           
+  league championship?                                     97.6¢                      97.0¢        Championship?                                       
+  Will the Indianapolis Colts win the 2027 NFL         Yes 1.5¢ / No     0.907    Yes 2.0¢ / No    Will Indianapolis win the 2027 Pro Football         
+  league championship?                                     98.7¢                      98.0¢        Championship?                                       
+  Will the Arizona Cardinals win the 2027 NFL league   Yes 0.6¢ / No     0.907    Yes 1.0¢ / No    Will Arizona win the 2027 Pro Football              
+  championship?                                            99.2¢                      99.0¢        Championship?                                       
+  Will the Miami Dolphins win the 2027 NFL league      Yes 0.8¢ / No     0.905    Yes 1.0¢ / No    Will Miami win the 2027 Pro Football Championship?  
+  championship?                                            99.2¢                      99.0¢                                                            
+  Will the Tennessee Titans win the 2027 NFL league    Yes 0.7¢ / No     0.901    Yes 1.0¢ / No    Will Tennessee win the 2027 Pro Football            
+  championship?                                            99.2¢                      99.0¢        Championship?                                       
+  Will the Las Vegas Raiders win the 2027 NFL league   Yes 0.8¢ / No     0.895    Yes 1.0¢ / No    Will Las Vegas win the 2027 Pro Football            
+  championship?                                            99.2¢                      99.0¢        Championship?                                       
+  Will the Houston Texans win the 2027 NFL league      Yes 3.4¢ / No     0.892    Yes 4.0¢ / No    Will Houston win the 2027 Pro Football              
+  championship?                                            96.5¢                      96.0¢        Championship?                                       
+  Will the Washington Commanders win the 2027 NFL      Yes 1.2¢ / No     0.887    Yes 2.0¢ / No    Will Washington win the 2027 Pro Football           
+  league championship?                                     98.9¢                      98.0¢        Championship?                                       
+  Will the Los Angeles Rams win the 2027 NFL league    Yes 9.0¢ / No     0.878    Yes 9.0¢ / No    Will Los Angeles R win the 2027 Pro Football        
+  championship?                                            92.0¢                      91.0¢        Championship?                                       
+  Will the New York Jets win the 2027 NFL league       Yes 0.7¢ / No     0.864    Yes 1.0¢ / No    Will New York J win the 2027 Pro Football           
+  championship?                                            99.2¢                      99.0¢        Championship?                                       
+  Will the New York Giants win the 2027 NFL league     Yes 1.2¢ / No     0.863    Yes 2.0¢ / No    Will New York G win the 2027 Pro Football           
+  championship?                                            98.9¢                      98.0¢        Championship?                                       
+  Will the Los Angeles Chargers win the 2027 NFL       Yes 5.1¢ / No     0.855    Yes 6.0¢ / No    Will Los Angeles C win the 2027 Pro Football        
+  league championship?                                     94.5¢                      94.0¢        Championship?                                       
+                                                                                                                                                       
+───────────────────────────────────────── Who will be the next Secretary-General of the UN?  ↔  Who will be the next UN Secretary-General?  (event score: 0.925) ──────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Alicia Bárcena be the next Secretary General    Yes 1.1¢ / No     0.971    Yes 8.0¢ / No    Who will be the next Secretary-General of UN?:      
+  of the United Nations?                                   92.7¢                      85.0¢        Alicia Bárcena                                      
+  Will Maria Fernanda Espinosa Garcés be the next      Yes 7.0¢ / No     0.968    Yes 13.0¢ / No   Who will be the next Secretary-General of UN?:      
+  Secretary General of the United Nations?                 96.5¢                      89.0¢        Maria Fernanda Espinosa Garcés                      
+  Will Rebeca Grynspan be the next Secretary General   Yes 28.6¢ / No    0.967    Yes 16.0¢ / No   Who will be the next Secretary-General of UN?:      
+  of the United Nations?                                   79.7¢                      86.0¢        Rebeca Grynspan                                     
+  Will Rafael Grossi be the next Secretary General     Yes 29.0¢ / No    0.965    Yes 36.0¢ / No   Who will be the next Secretary-General of UN?:      
+  of the United Nations?                                   70.0¢                      64.0¢        Rafael Grossi                                       
+  Will Mia Mottley be the next Secretary General of    Yes 6.5¢ / No     0.949    Yes 6.0¢ / No    Who will be the next Secretary-General of UN?: Mia  
+  the United Nations?                                      94.2¢                      88.0¢        Mottley                                             
+  Will Michelle Bachelet be the next Secretary         Yes 22.0¢ / No    0.946    Yes 11.0¢ / No   Who will be the next Secretary-General of UN?:      
+  General of the United Nations?                           89.0¢                      84.0¢        Michelle Bachelet                                   
+  Will Amina Mohammed be the next Secretary General    Yes 6.5¢ / No     0.903    Yes 13.0¢ / No   Who will be the next Secretary-General of UN?:      
+  of the United Nations?                                   83.7¢                      86.0¢        Amina J. Mohammed                                   
+                                                                                                                                                       
+────────────────────────────────────────────────── Republican Presidential Nominee 2028  ↔  2028 Republican nominee for President?  (event score: 0.924) ──────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Erika Kirk win the 2028 Republican              Yes 1.2¢ / No     0.918    Yes 1.0¢ / No    Will Erika Kirk be the nominee for the Presidency   
+  presidential nomination?                                 98.8¢                      99.0¢        for the Republican party?                           
+  Will Byron Donalds win the 2028 Republican           Yes 1.0¢ / No     0.911    Yes 1.0¢ / No    Will Byron Donalds be the nominee for the           
+  presidential nomination?                                 99.0¢                      98.0¢        Presidency for the Republican party?                
+  Will Elise Stefanik win the 2028 Republican          Yes 1.0¢ / No     0.906    Yes 1.0¢ / No    Will Elise Stefanik be the nominee for the          
+  presidential nomination?                                 99.0¢                      99.0¢        Presidency for the Republican party?                
+  Will Thomas Massie win the 2028 Republican           Yes 1.2¢ / No     0.899    Yes 3.0¢ / No    Will Thomas Massie be the nominee for the           
+  presidential nomination?                                 98.8¢                      97.0¢        Presidency for the Republican party?                
+  Will Katie Britt win the 2028 Republican             Yes 1.0¢ / No     0.896    Yes 1.0¢ / No    Will Katie Britt be the nominee for the Presidency  
+  presidential nomination?                                 99.0¢                      99.0¢        for the Republican party?                           
+  Will John Thune win the 2028 Republican              Yes 1.0¢ / No     0.893    Yes 1.0¢ / No    Will John Thune be the nominee for the Presidency   
+  presidential nomination?                                 99.0¢                      99.0¢        for the Republican party?                           
+  Will Brian Kemp win the 2028 Republican              Yes 1.2¢ / No     0.893    Yes 2.0¢ / No    Will Brian Kemp be the nominee for the Presidency   
+  presidential nomination?                                 98.9¢                      98.0¢        for the Republican party?                           
+  Will Marjorie Taylor Greene win the 2028             Yes 1.2¢ / No     0.890    Yes 2.0¢ / No    Will Marjorie Taylor Greene be the nominee for the  
+  Republican presidential nomination?                      98.7¢                      97.0¢        Presidency for the Republican party?                
+  Will Matt Gaetz win the 2028 Republican              Yes 1.2¢ / No     0.887    Yes 1.0¢ / No    Will Matt Gaetz be the nominee for the Presidency   
+  presidential nomination?                                 98.8¢                      99.0¢        for the Republican party?                           
+  Will Tucker Carlson win the 2028 Republican          Yes 1.6¢ / No     0.885    Yes 2.0¢ / No    Will Tucker Carlson be the nominee for the          
+  presidential nomination?                                 98.4¢                      98.0¢        Presidency for the Republican party?                
+  Will Josh Hawley win the 2028 Republican             Yes 1.3¢ / No     0.885    Yes 2.0¢ / No    Will Josh Hawley be the nominee for the Presidency  
+  presidential nomination?                                 98.7¢                      98.0¢        for the Republican party?                           
+  Will Elon Musk win the 2028 Republican               Yes 1.3¢ / No     0.885    Yes 1.0¢ / No    Will Elon Musk be the nominee for the Presidency    
+  presidential nomination?                                 98.7¢                      99.0¢        for the Republican party?                           
+  Will Glenn Youngkin win the 2028 Republican          Yes 1.8¢ / No     0.885    Yes 2.0¢ / No    Will Glenn Youngkin be the nominee for the          
+  presidential nomination?                                 98.2¢                      97.0¢        Presidency for the Republican party?                
+  Will Sarah Huckabee Sanders win the 2028             Yes 1.0¢ / No     0.883    Yes 2.0¢ / No    Will Sarah Huckabee Sanders be the nominee for the  
+  Republican presidential nomination?                      99.0¢                      98.0¢        Presidency for the Republican party?                
+  Will Greg Abbott win the 2028 Republican             Yes 1.1¢ / No     0.882    Yes 2.0¢ / No    Will Greg Abbott be the nominee for the Presidency  
+  presidential nomination?                                 99.0¢                      98.0¢        for the Republican party?                           
+  Will Kristi Noem win the 2028 Republican             Yes 1.0¢ / No     0.881    Yes 1.0¢ / No    Will Kristi Noem be the nominee for the Presidency  
+  presidential nomination?                                 99.0¢                      99.0¢        for the Republican party?                           
+  Will J.D. Vance win the 2028 Republican              Yes 44.2¢ / No    0.880    Yes 44.0¢ / No   Will J.D. Vance be the nominee for the Presidency   
+  presidential nomination?                                 55.9¢                      54.0¢        for the Republican party?                           
+  Will Nikki Haley win the 2028 Republican             Yes 1.3¢ / No     0.865    Yes 2.0¢ / No    Will Nikki Haley be the nominee for the Presidency  
+  presidential nomination?                                 98.7¢                      98.0¢        for the Republican party?                           
+  Will Tulsi Gabbard win the 2028 Republican           Yes 1.4¢ / No     0.863    Yes 2.0¢ / No    Will Tulsi Gabbard be the nominee for the           
+  presidential nomination?                                 98.6¢                      98.0¢        Presidency for the Republican party?                
+  Will Vivek Ramaswamy win the 2028 Republican         Yes 1.4¢ / No     0.859    Yes 2.0¢ / No    Will Vivek Ramaswamy be the nominee for the         
+  presidential nomination?                                 98.6¢                      98.0¢        Presidency for the Republican party?                
+  Will Steve Bannon win the 2028 Republican            Yes 0.9¢ / No     0.854    Yes 1.0¢ / No    Will Steve Bannon be the nominee for the            
+  presidential nomination?                                 99.1¢                      98.0¢        Presidency for the Republican party?                
+  Will Robert F. Kennedy Jr. win the 2028 Republican   Yes 49.0¢ / No    0.853    Yes 2.0¢ / No    Will Robert F. Kennedy Jr. be the nominee for the   
+  presidential nomination?                                 51.0¢                      98.0¢        Presidency for the Republican party?                
+  Will Donald Trump Jr. win the 2028 Republican        Yes 2.2¢ / No     0.845    Yes 4.0¢ / No    Will Donald J. Trump Jr. be the nominee for the     
+  presidential nomination?                                 97.8¢                      96.0¢        Presidency for the Republican party?                
+  Will Ron DeSantis win the 2028 Republican            Yes 1.9¢ / No     0.837    Yes 6.0¢ / No    Will Ron DeSantis be the nominee for the            
+  presidential nomination?                                 98.0¢                      94.0¢        Presidency for the Republican party?                
+  Will Marco Rubio win the 2028 Republican             Yes 13.5¢ / No    0.824    Yes 20.0¢ / No   Will Marco Rubio be the nominee for the Presidency  
+  presidential nomination?                                 86.6¢                      80.0¢        for the Republican party?                           
+  Will Mike Pence win the 2028 Republican              Yes 1.0¢ / No     0.823    Yes 1.0¢ / No    Will Mike Pence be the nominee for the Presidency   
+  presidential nomination?                                 99.0¢                      99.0¢        for the Republican party?                           
+                                                                                                                                                       
+─────────────────────────────────────────────────── California Governor Election Winner  ↔  California Governor winner? (Person)  (event score: 0.918) ────────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Toni Atkins win the California Governor         Yes 0.2¢ / No     0.905    Yes 1.0¢ / No    Who will win the governorship in California?: Toni  
+  Election in 2026?                                        99.8¢                      99.0¢        Atkins                                              
+  Will Alex Padilla win the California Governor        Yes 0.2¢ / No     0.905    Yes 1.0¢ / No    Who will win the governorship in California?: Alex  
+  Election in 2026?                                        98.8¢                      99.0¢        Padilla                                             
+  Will Matt Mahan win the California Governor          Yes 19.0¢ / No    0.898    Yes 12.0¢ / No   Who will win the governorship in California?: Matt  
+  Election in 2026?                                        79.5¢                      87.0¢        Mahan                                               
+  Will Antonio Villaraigosa win the California         Yes 1.0¢ / No     0.897    Yes 1.0¢ / No    Who will win the governorship in California?:       
+  Governor Election in 2026?                               99.2¢                      98.0¢        Antonio Villaraigosa                                
+  Will Rick Caruso win the California Governor         Yes 0.1¢ / No     0.896    Yes 1.0¢ / No    Who will win the governorship in California?: Rick  
+  Election in 2026?                                        99.7¢                      99.0¢        Caruso                                              
+  Will Betty Yee win the California Governor           Yes 0.2¢ / No     0.894    Yes 1.0¢ / No    Who will win the governorship in California?:       
+  Election in 2026?                                        99.6¢                      99.0¢        Betty Yee                                           
+  Will Tony Thurmond win the California Governor       Yes 0.2¢ / No     0.894    Yes 1.0¢ / No    Who will win the governorship in California?: Tony  
+  Election in 2026?                                        99.8¢                      99.0¢        Thurmond                                            
+  Will Katie Porter win the California Governor        Yes 7.3¢ / No     0.892    Yes 6.0¢ / No    Who will win the governorship in California?:       
+  Election in 2026?                                        93.5¢                      94.0¢        Katie Porter                                        
+  Will Kyle Langford win the California Governor       Yes 0.6¢ / No     0.892    Yes 1.0¢ / No    Who will win the governorship in California?: Kyle  
+  Election in 2026?                                        98.2¢                      99.0¢        Langford                                            
+  Will Leo Zacky win the California Governor           Yes 0.2¢ / No     0.891    Yes 1.0¢ / No    Who will win the governorship in California?: Leo   
+  Election in 2026?                                        99.8¢                      99.0¢        Zacky                                               
+  Will Eleni Kounalakis win the California Governor    Yes 0.1¢ / No     0.889    Yes 1.0¢ / No    Who will win the governorship in California?:       
+  Election in 2026?                                        99.7¢                      99.0¢        Eleni Kounalakis                                    
+  Will Chad Bianco win the California Governor         Yes 2.8¢ / No     0.889    Yes 8.0¢ / No    Who will win the governorship in California?: Chad  
+  Election in 2026?                                        94.5¢                      92.0¢        Bianco                                              
+  Will Eric Swalwell win the California Governor       Yes 52.0¢ / No    0.889    Yes 55.0¢ / No   Who will win the governorship in California?: Eric  
+  Election in 2026?                                        46.0¢                      44.0¢        Swalwell                                            
+  Will Daniel Mercuri win the California Governor      Yes 0.2¢ / No     0.885    Yes 1.0¢ / No    Who will win the governorship in California?:       
+  Election in 2026?                                        99.8¢                      99.0¢        Daniel Mercuri                                      
+  Will Xavier Becerra win the California Governor      Yes 0.3¢ / No     0.885    Yes 2.0¢ / No    Who will win the governorship in California?:       
+  Election in 2026?                                        99.7¢                      98.0¢        Xavier Becerra                                      
+  Will Nicole Shanahan win the California Governor     Yes 0.2¢ / No     0.885    Yes 1.0¢ / No    Who will win the governorship in California?:       
+  Election in 2026?                                        99.7¢                      99.0¢        Nicole Shanahan                                     
+  Will Tom Steyer win the California Governor          Yes 10.0¢ / No    0.873    Yes 7.0¢ / No    Who will win the governorship in California?: Tom   
+  Election in 2026?                                        88.5¢                      92.0¢        Steyer                                              
+  Will Stephen Cloobeck win the California Governor    Yes 0.2¢ / No     0.870    Yes 2.0¢ / No    Who will win the governorship in California?:       
+  Election in 2026?                                        99.7¢                      99.0¢        Stephen Cloobeck                                    
+  Will Butch Ware win the California Governor          Yes 0.1¢ / No     0.866    Yes 1.0¢ / No    Who will win the governorship in California?:       
+  Election in 2026?                                        99.8¢                      98.0¢        Butch Ware                                          
+  Will Michael Younger win the California Governor     Yes 0.1¢ / No     0.859    Yes 1.0¢ / No    Who will win the governorship in California?:       
+  Election in 2026?                                        99.7¢                      99.0¢        Michael Younger                                     
+  Will Steve Hilton win the California Governor        Yes 10.0¢ / No    0.858    Yes 8.0¢ / No    Who will win the governorship in California?:       
+  Election in 2026?                                        91.3¢                      92.0¢        Steve Hilton                                        
+  Will Kamala Harris win the California Governor       Yes 0.2¢ / No     0.841    Yes 1.0¢ / No    Who will win the governorship in California?:       
+  Election in 2026?                                        99.8¢                      99.0¢        Kamala Harris                                       
+                                                                                                                                                       
+──────────────────────────────────────────────────────── OpenAI IPO by...?  ↔  When will OpenAI officially announce an IPO?  (event score: 0.918) ─────────────────────────────────────────────────────────
+                                                                                                                                
+  Polymarket bracket                        PM price       Score     Kalshi price    Kalshi bracket                             
+ ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will OpenAI IPO by June 30 2026?       Yes 5.0¢ / No     0.961    Yes 5.0¢ / No    When will OpenAI IPO?: Before Jun 1, 2026  
+                                             94.5¢                      96.0¢                                                   
+  Will OpenAI IPO by December 31 2026?   Yes 46.0¢ / No    0.961    Yes 50.0¢ / No   When will OpenAI IPO?: Before Dec 1, 2026  
+                                             53.0¢                      46.0¢                                                   
+                                                                                                                                
+──────────────────────────────────────────────── Balance of Power: 2026 Midterms  ↔  2026 2026 Midterms: Congress Balance of Power?  (event score: 0.917) ─────────────────────────────────────────────────
+                                                                                                                                             
+  Polymarket bracket                            PM price       Score     Kalshi price    Kalshi bracket                                      
+ ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  2026 Balance of Power: D Senate, R House   Yes 1.4¢ / No     0.821    Yes 46.0¢ / No   Will House Control be Democratic AND Senate         
+                                                 98.6¢                      54.0¢        Control be Republican for Feb 2027?: D-House,       
+                                                                                         R-Senate                                            
+                                                                                                                                             
+───────────────────────────────────────────────────────────────── US GDP growth in Q1 2026?  ↔  GDP growth in 2026?  (event score: 0.916) ─────────────────────────────────────────────────────────────────
+                                                                                                                                     
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                    
+ ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will US GDP growth in Q1 2026 be between 3.0% and    Yes 25.0¢ / No    0.896    Yes 9.0¢ / No    3.1 to 3.5                        
+  3.5%?                                                    75.5¢                      91.0¢                                          
+  Will US GDP growth in Q1 2026 be between 1.0% and    Yes 4.1¢ / No     0.895    Yes 13.0¢ / No   1.1 to 1.5                        
+  1.5%?                                                    93.0¢                      88.0¢                                          
+  Will US GDP growth in Q1 2026 be between 2.0% and    Yes 21.0¢ / No    0.892    Yes 26.0¢ / No   2.1 to 2.5                        
+  2.5%?                                                    82.0¢                      74.0¢                                          
+  Will US GDP growth in Q1 2026 be less than 1.0%?     Yes 22.7¢ / No    0.889    Yes 6.0¢ / No    0.6 to 1.0                        
+                                                           95.5¢                      96.0¢                                          
+  Will US GDP growth in Q1 2026 be between 2.5% and    Yes 7.3¢ / No     0.884    Yes 25.0¢ / No   2.6 to 3.0                        
+  3.0%?                                                    90.8¢                      76.0¢                                          
+  Will US GDP growth in Q1 2026 be between 1.5% and    Yes 8.0¢ / No     0.868    Yes 13.0¢ / No   1.6 to 2.0                        
+  2.0%?                                                    89.0¢                      81.0¢                                          
+  Will US GDP growth in Q1 2026 be greater than        Yes 38.0¢ / No    0.859    Yes 0.0¢ / No    0.1 to 0.5                        
+  3.5%?                                                    63.0¢                      97.0¢                                          
+                                                                                                                                     
+───────────────────────────────────────────── Gorton and Denton by-election Winner  ↔  Gorton and Denton by-election margin of victory?  (event score: 0.913) ─────────────────────────────────────────────
+  No bracket matches above threshold (PM has 3 sub-markets, Kalshi has 8)
+─────────────────────────────── Texas Democratic Senate Primary: First Round Winner  ↔  Texas Senate Democratic primary 1st round margin of victory?  (event score: 0.902) ────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will James Talarico receive the most votes in the    Yes 75.0¢ / No    0.860    Yes 12.0¢ / No   Will the margin of victory for James Talarico in    
+  first round of the Democratic Senate primary in          36.5¢                      89.0¢        the first round of the 2026 Texas Senate            
+  Texas?                                                                                           Democratic primary be between 18% and 100%?:        
+                                                                                                   Talarico, 18% and above                             
+  Will Jasmine Crockett receive the most votes in      Yes 29.0¢ / No    0.859    Yes 7.0¢ / No    Will the margin of victory for Jasmine Crockett in  
+  the first round of the Democratic Senate primary         76.5¢                      92.0¢        the first round of the 2026 Texas Senate            
+  in Texas?                                                                                        Democratic primary be between 6% and 9%?:           
+                                                                                                   Crockett, 6-9%                                      
+                                                                                                                                                       
+──────────────────────────────────────────────────────── Lead Bank in SpaceX’s IPO?  ↔  Which bank will take SpaceX public?  (event score: 0.902) ─────────────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Citigroup or any of its underwriting            Yes 0.1¢ / No     0.846    Yes 60.0¢ / No   Will Citigroup take SpaceX public before Jan 1,     
+  affiliates serve as the lead underwriter in              99.9¢                      36.0¢        2028?                                               
+  SpaceX’s initial public offering?                                                                                                                    
+  Will Bank of America or any of its underwriting      Yes 0.5¢ / No     0.843    Yes 87.0¢ / No   Will Bank of America take SpaceX public before Jan  
+  affiliates serve as the lead underwriter in              99.5¢                       8.0¢        1, 2028?                                            
+  SpaceX’s initial public offering?                                                                                                                    
+  Will JPMorgan Chase or any of its underwriting       Yes 1.1¢ / No     0.841    Yes 82.0¢ / No   Will JPMorgan Chase take SpaceX public before Jan   
+  affiliates serve as the lead underwriter in              98.9¢                      14.0¢        1, 2028?                                            
+  SpaceX’s initial public offering?                                                                                                                    
+  Will Morgan Stanley or any of its underwriting       Yes 20.0¢ / No    0.833    Yes 94.0¢ / No   Will Morgan Stanley take SpaceX public before Jan   
+  affiliates serve as the lead underwriter in              80.5¢                       6.0¢        1, 2028?                                            
+  SpaceX’s initial public offering?                                                                                                                    
+  Will Goldman Sachs or any of its underwriting        Yes 80.0¢ / No    0.828    Yes 93.0¢ / No   Will Goldman Sachs take SpaceX public before Jan    
+  affiliates serve as the lead underwriter in              23.5¢                       7.0¢        1, 2028?                                            
+  SpaceX’s initial public offering?                                                                                                                    
+                                                                                                                                                       
+───────────────────────────────────────── Next Prime Minister of Slovenia  ↔  Who will be Prime Minister of Slovenia after their election?  (event score: 0.900) ──────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Anže Logar be the next Prime Minister of        Yes 6.2¢ / No     0.915    Yes 6.0¢ / No    Will Anže Logar become Prime Minister of Slovenia   
+  Slovenia?                                                94.0¢                      86.0¢        following the 2026 Slovenian parliamentary          
+                                                                                                   election?                                           
+  Will Janez Janša be the next Prime Minister of       Yes 62.0¢ / No    0.878    Yes 66.0¢ / No   Will Janez Janša become Prime Minister of Slovenia  
+  Slovenia?                                                39.5¢                      30.0¢        following the 2026 Slovenian parliamentary          
+                                                                                                   election?                                           
+  Will Robert Golob be the next Prime Minister of      Yes 31.0¢ / No    0.874    Yes 24.0¢ / No   Will Robert Golob become Prime Minister of          
+  Slovenia?                                                67.0¢                      46.0¢        Slovenia following the 2026 Slovenian               
+                                                                                                   parliamentary election?                             
+                                                                                                                                                       
+────────────────────────────────────────────────── MS-03 House Election Winner  ↔  Which party will win the House race for MS-03?  (event score: 0.898) ───────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will the Republican Party win the MS-03 House        Yes 90.0¢ / No    0.971    Yes 94.0¢ / No   Will Republican win the House race for MS-03?:      
+  seat?                                                     8.0¢                       5.0¢        Republican party                                    
+  Will the Democratic Party win the MS-03 House        Yes 8.0¢ / No     0.966    Yes 5.0¢ / No    Will Democratic win the House race for MS-03?:      
+  seat?                                                    91.5¢                      93.0¢        Democratic party                                    
+                                                                                                                                                       
+─────────────────────────── Who will be the next Prime Minister of Israel after the next election?  ↔  Who will be the next new Prime Minister of Israel?  (event score: 0.897) ───────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Avigdor Lieberman be the next Prime Minister    Yes 0.8¢ / No     1.000    Yes 2.0¢ / No    Will Avigdor Lieberman be the next Prime Minister   
+  of Israel?                                               99.2¢                      96.0¢        of Israel?                                          
+  Will Naftali Bennett be the next Prime Minister of   Yes 32.0¢ / No    1.000    Yes 41.0¢ / No   Will Naftali Bennett be the next Prime Minister of  
+  Israel?                                                  68.5¢                      57.0¢        Israel?                                             
+  Will Yariv Levin be the next Prime Minister of       Yes 0.2¢ / No     1.000    Yes 2.0¢ / No    Will Yariv Levin be the next Prime Minister of      
+  Israel?                                                  99.8¢                      95.0¢        Israel?                                             
+  Will Yair Lapid be the next Prime Minister of        Yes 3.0¢ / No     1.000    Yes 5.0¢ / No    Will Yair Lapid be the next Prime Minister of       
+  Israel?                                                  97.9¢                      90.0¢        Israel?                                             
+  Will Yossi Cohen be the next Prime Minister of       Yes 0.5¢ / No     1.000    Yes 4.0¢ / No    Will Yossi Cohen be the next Prime Minister of      
+  Israel?                                                  99.5¢                      91.0¢        Israel?                                             
+  Will Benny Gantz be the next Prime Minister of       Yes 0.5¢ / No     1.000    Yes 4.0¢ / No    Will Benny Gantz be the next Prime Minister of      
+  Israel?                                                  99.7¢                      92.0¢        Israel?                                             
+  Will Yair Golan be the next Prime Minister of        Yes 3.1¢ / No     1.000    Yes 6.0¢ / No    Will Yair Golan be the next Prime Minister of       
+  Israel?                                                  98.6¢                      94.0¢        Israel?                                             
+  Will Itamar Ben Gvir be the next Prime Minister of   Yes 0.4¢ / No     0.998    Yes 2.0¢ / No    Will Itamar Ben-Gvir be the next Prime Minister of  
+  Israel?                                                  99.7¢                      94.0¢        Israel?                                             
+  Will Gadi Eizenkot be the next Prime Minister of     Yes 7.0¢ / No     0.980    Yes 8.0¢ / No    Will Gadi Eisenkot be the next Prime Minister of    
+  Israel?                                                  93.8¢                      92.0¢        Israel?                                             
+                                                                                                                                                       
+────────────────────────────────────────────────── What will Fed Rate hit before 2027?  ↔  Fed funds rate after Jan 2027 meeting?  (event score: 0.893) ───────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will the Fed’s upper bound reach 4.25% or higher     Yes 5.0¢ / No     0.915    Yes 1.0¢ / No    Will the upper bound of the federal funds rate be   
+  before 2027?                                             95.3¢                      99.0¢        above 4.25% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s upper bound reach 5.25% or higher     Yes 2.0¢ / No     0.891    Yes 31.0¢ / No   Will the upper bound of the federal funds rate be   
+  before 2027?                                             97.6¢                      65.0¢        above 3.25% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s lower bound reach 0.25% or lower      Yes 4.2¢ / No     0.889    Yes 0.0¢ / No    Will the upper bound of the federal funds rate be   
+  before 2027?                                             94.1¢                       0.0¢        above 0.25% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s lower bound reach 0% or lower         Yes 4.0¢ / No     0.887    Yes 0.0¢ / No    Will the upper bound of the federal funds rate be   
+  before 2027?                                             94.5¢                       0.0¢        above 0.00% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s upper bound reach 4.75% or higher     Yes 3.0¢ / No     0.885    Yes 12.0¢ / No   Will the upper bound of the federal funds rate be   
+  before 2027?                                             97.0¢                      85.0¢        above 3.75% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s lower bound reach 0.75% or lower      Yes 3.2¢ / No     0.884    Yes 94.0¢ / No   Will the upper bound of the federal funds rate be   
+  before 2027?                                             95.4¢                       6.0¢        above 0.75% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s lower bound reach 1.25% or lower      Yes 6.0¢ / No     0.884    Yes 94.0¢ / No   Will the upper bound of the federal funds rate be   
+  before 2027?                                             93.5¢                       6.0¢        above 1.25% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s lower bound reach 1.0% or lower       Yes 6.0¢ / No     0.883    Yes 95.0¢ / No   Will the upper bound of the federal funds rate be   
+  before 2027?                                             93.5¢                       5.0¢        above 1.00% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s lower bound reach 1.75% or lower      Yes 7.0¢ / No     0.881    Yes 0.0¢ / No    Will the upper bound of the federal funds rate be   
+  before 2027?                                             92.0¢                       4.0¢        above 1.75% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s upper bound reach 5.0% or higher      Yes 2.8¢ / No     0.876    Yes 0.0¢ / No    Will the upper bound of the federal funds rate be   
+  before 2027?                                             97.4¢                       0.0¢        above 0.50% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s lower bound reach 2.25% or lower      Yes 14.0¢ / No    0.875    Yes 87.0¢ / No   Will the upper bound of the federal funds rate be   
+  before 2027?                                             85.5¢                      15.0¢        above 2.25% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s lower bound reach 2.75% or lower      Yes 51.0¢ / No    0.875    Yes 56.0¢ / No   Will the upper bound of the federal funds rate be   
+  before 2027?                                             48.0¢                      36.0¢        above 2.75% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s lower bound reach 1.5% or lower       Yes 11.0¢ / No    0.868    Yes 90.0¢ / No   Will the upper bound of the federal funds rate be   
+  before 2027?                                             91.0¢                       2.0¢        above 1.50% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s lower bound reach 2.5% or lower       Yes 22.0¢ / No    0.861    Yes 77.0¢ / No   Will the upper bound of the federal funds rate be   
+  before 2027?                                             78.5¢                      24.0¢        above 2.50% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s upper bound reach 4.5% or higher      Yes 4.0¢ / No     0.856    Yes 3.0¢ / No    Will the upper bound of the federal funds rate be   
+  before 2027?                                             96.8¢                      89.0¢        above 4.00% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s lower bound reach 3.0% or lower       Yes 83.0¢ / No    0.853    Yes 45.0¢ / No   Will the upper bound of the federal funds rate be   
+  before 2027?                                             17.5¢                      53.0¢        above 3.00% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s lower bound reach 2.0% or lower       Yes 9.0¢ / No     0.851    Yes 0.0¢ / No    Will the upper bound of the federal funds rate be   
+  before 2027?                                             87.5¢                       9.0¢        above 2.00% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+  Will the Fed’s upper bound reach 5.5% or higher      Yes 2.9¢ / No     0.838    Yes 20.0¢ / No   Will the upper bound of the federal funds rate be   
+  before 2027?                                             78.4¢                      75.0¢        above 3.50% following the Fed's Jan 27, 2027        
+                                                                                                   meeting?                                            
+                                                                                                                                                       
+──────────────────────────────────────────────── KY-04 Republican Primary Winner  ↔  Which party will win the House race for KY-04?  (event score: 0.875) ─────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 4 sub-markets, Kalshi has 2)
+───────────────────────────────────────────── Will Trump acquire Greenland before 2027?  ↔  Will Trump buy at least part of Greenland?  (event score: 0.874) ──────────────────────────────────────────────
+                                                                                                                                  
+  Polymarket bracket                             PM price       Score     Kalshi price    Kalshi bracket                          
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Trump acquire Greenland before 2027?   Yes 11.2¢ / No    0.974    Yes 13.0¢ / No   Will Trump buy Greenland?: Before 2027  
+                                                  88.5¢                      86.0¢                                                
+                                                                                                                                  
+──────────────────────────────────────────────── Elon Musk trillionaire before 2027?  ↔  When will Elon Musk become a trillionaire?  (event score: 0.872) ─────────────────────────────────────────────────
+                                                                                                                                   
+  Polymarket bracket                       PM price       Score     Kalshi price    Kalshi bracket                                 
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Elon Musk trillionaire before 2027?   Yes 67.0¢ / No    0.975    Yes 75.0¢ / No   Will Elon Musk be a trillionaire before 2027?  
+                                            34.0¢                      25.0¢                                                       
+                                                                                                                                   
+──────────────────────────────── Which companies will have a #1 AI model by June 30?  ↔  Which companies will have a top-ranked AI model this year?  (event score: 0.869) ─────────────────────────────────
+                                                                                                                                                 
+  Polymarket bracket                                PM price       Score     Kalshi price    Kalshi bracket                                      
+ ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will DeepSeek have a #1 AI model by June 30?   Yes 12.8¢ / No    0.897    Yes 27.0¢ / No   Will Deepseek have a top-ranked AI model before     
+                                                     88.5¢                      73.0¢        2027?                                               
+  Will Mistral have a #1 AI model by June 30?    Yes 4.2¢ / No     0.882    Yes 8.0¢ / No    Will Mistral have a top-ranked AI model before      
+                                                     96.7¢                      92.0¢        2027?                                               
+  Will Z.ai have a #1 AI model by June 30?       Yes 21.0¢ / No    0.879    Yes 12.0¢ / No   Will Z.ai have a top-ranked AI model before 2027?   
+                                                     90.5¢                      88.0¢                                                            
+  Will Alibaba have a #1 AI model by June 30?    Yes 5.0¢ / No     0.876    Yes 18.0¢ / No   Will Alibaba have a top-ranked AI model before      
+                                                     95.3¢                      81.0¢        2027?                                               
+  Will Baidu have a #1 AI model by June 30?      Yes 6.4¢ / No     0.870    Yes 11.0¢ / No   Will Baidu have a top-ranked AI model before 2027?  
+                                                     93.7¢                      85.0¢                                                            
+  Will xAI have a #1 AI model by June 30?        Yes 26.0¢ / No    0.868    Yes 51.0¢ / No   Will xAI have a top-ranked AI model before 2027?    
+                                                     76.5¢                      49.0¢                                                            
+  Will Meta have a #1 AI model by June 30?       Yes 9.0¢ / No     0.868    Yes 18.0¢ / No   Will Meta have a top-ranked AI model before 2027?   
+                                                     89.5¢                      82.0¢                                                            
+  Will Nvidia have a #1 AI model by June 30?     Yes 1.4¢ / No     0.860    Yes 6.0¢ / No    Will Nvidia have a top-ranked AI model before       
+                                                     94.0¢                      92.0¢        2027?                                               
+  Will OpenAI have a #1 AI model by June 30?     Yes 32.0¢ / No    0.851    Yes 59.0¢ / No   Will OpenAI have a top-ranked AI model before       
+                                                     66.5¢                      41.0¢        2027?                                               
+                                                                                                                                                 
+──────────────────────────────────────────────── TX-02 Republican Primary Winner  ↔  Which party will win the House race for TX-02?  (event score: 0.867) ─────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Steve Toth be the Republican Nominee for        Yes 19.0¢ / No    0.828    Yes 94.0¢ / No   Will Republican win the House race for TX-02?:      
+  TX-02?                                                   82.0¢                       7.0¢        Republican party                                    
+                                                                                                                                                       
+────────────────────────────────────────────────────────── Texas Republican Senate Primary Winner  ↔  Texas Senate winner?  (event score: 0.865) ──────────────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 5 sub-markets, Kalshi has 2)
+──────────────────────────────────────────────── MI-10 Republican Primary Winner  ↔  Which party will win the House race for MI-10?  (event score: 0.865) ─────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Mike Bouchard be the Republican Nominee for     Yes 63.0¢ / No    0.844    Yes 48.0¢ / No   Will Republican win the House race for MI-10?:      
+  MI-10?                                                   40.5¢                      52.0¢        Republican party                                    
+                                                                                                                                                       
+───────────────────────────────────────────── How much revenue will the U.S. raise from tariffs in 2025?  ↔  US tariff revenue for 2026  (event score: 0.863) ─────────────────────────────────────────────
+  No bracket matches above threshold (PM has 4 sub-markets, Kalshi has 6)
+─────────────────────────────────────── Which party will win the House in 2026?  ↔  2026 2026 Midterms: House popular vote margin of victory?  (event score: 0.863) ───────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will the Republican Party control the House after    Yes 16.0¢ / No    0.904    Yes 5.0¢ / No    Will Republicans win the 2026 U.S. House of         
+  the 2026 Midterm elections?                              84.5¢                      94.0¢        Representatives national popular vote?              
+  Will the Democratic Party control the House after    Yes 84.0¢ / No    0.858    Yes 3.0¢ / No    Will the Democratic margin of victory in the 2026   
+  the 2026 Midterm elections?                              15.5¢                      97.0¢        U.S. House of Representatives national popular      
+                                                                                                   vote be between 14 and 16%?: Democrats, 14 to 16%   
+                                                                                                                                                       
+──────────────────────────────────────────────────────────── Next James Bond actor?  ↔  Who will be the next James Bond?  (event score: 0.861) ────────────────────────────────────────────────────────────
+                                                                                                                                                      
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                     
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Jacob Elordi announced as next James Bond?           Yes 17.4¢ / No    0.968    Yes 29.0¢ / No   Will Jacob Elordi be the next James Bond?          
+                                                           79.5¢                      70.0¢                                                           
+  Harris Dickinson announced as next James Bond?       Yes 0.4¢ / No     0.952    Yes 7.0¢ / No    Will Harris Dickinson be the next James Bond?      
+                                                           99.1¢                      93.0¢                                                           
+  Callum Turner announced as next James Bond?          Yes 21.0¢ / No    0.944    Yes 35.0¢ / No   Will Callum Turner be the next James Bond?         
+                                                           78.5¢                      65.0¢                                                           
+  James Norton announced as next James Bond?           Yes 0.2¢ / No     0.941    Yes 8.0¢ / No    Will James Norton be the next James Bond?          
+                                                           99.7¢                      95.0¢                                                           
+  Aaron Taylor-Johnson announced as next James Bond?   Yes 6.7¢ / No     0.933    Yes 11.0¢ / No   Will Aaron Taylor-Johnson be the next James Bond?  
+                                                           93.2¢                      89.0¢                                                           
+  Tom Holland announced as next James Bond?            Yes 0.8¢ / No     0.906    Yes 5.0¢ / No    Will Tom Holland be the next James Bond?           
+                                                           99.1¢                      95.0¢                                                           
+  Tom Hardy announced as next James Bond?              Yes 0.1¢ / No     0.891    Yes 4.0¢ / No    Will Tom Hardy be the next James Bond?             
+                                                           99.8¢                      97.0¢                                                           
+  Henry Cavill announced as next James Bond?           Yes 1.1¢ / No     0.881    Yes 5.0¢ / No    Will Henry Cavill be the next James Bond?          
+                                                           98.6¢                      95.0¢                                                           
+  Jack Lowdon announced as next James Bond?            Yes 0.4¢ / No     0.871    Yes 4.0¢ / No    Will Jack Lowden be the next James Bond?           
+                                                           99.5¢                      96.0¢                                                           
+                                                                                                                                                      
+──────────────────────────────────────────────────────────────── Fed Decision in June?  ↔  Fed decision in Jun 2027?  (event score: 0.861) ────────────────────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will the Fed decrease interest rates by 25 bps       Yes 46.0¢ / No    0.913    Yes 0.0¢ / No    Will the Federal Reserve Cut rates by 25bps at      
+  after the June 2026 meeting?                             53.5¢                      75.0¢        their June 2027 meeting?: Cut 25bps                 
+  Will the Fed increase interest rates by 25 bps       Yes 1.5¢ / No     0.909    Yes 0.0¢ / No    Will the Federal Reserve Hike rates by 25bps at     
+  after the June 2026 meeting?                             98.2¢                      91.0¢        their June 2027 meeting?: Hike 25bps                
+  Will the Fed decrease interest rates by 50+ bps      Yes 7.0¢ / No     0.875    Yes 0.0¢ / No    Will the Federal Reserve Cut rates by >25bps at     
+  after the June 2026 meeting?                             93.5¢                      91.0¢        their June 2027 meeting?: Cut >25bps                
+  Will the Fed increase interest rates by 50+ bps      Yes 1.9¢ / No     0.860    Yes 0.0¢ / No    Will the Federal Reserve Hike rates by >25bps at    
+  after the June 2026 meeting?                             98.2¢                      91.0¢        their June 2027 meeting?: Hike >25bps               
+  Will there be no change in Fed interest rates        Yes 44.0¢ / No    0.841    Yes 60.0¢ / No   Will the Federal Reserve Hike rates by 0bps at      
+  after the June 2026 meeting?                             55.0¢                      30.0¢        their June 2027 meeting?: Fed maintains rate        
+                                                                                                                                                       
+──────────────────────────────────────────────── TX-30 Republican Primary Winner  ↔  Which party will win the House race for TX-30?  (event score: 0.861) ─────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Everett Jackson be the Republican Nominee for   Yes 4.0¢ / No     0.846    Yes 6.0¢ / No    Will Republican win the House race for TX-30?:      
+  TX-30?                                                   92.4¢                      94.0¢        Republican party                                    
+                                                                                                                                                       
+─────────────────────────────────────────────────────────────── Fed decision in April?  ↔  Fed decision in Apr 2027?  (event score: 0.861) ────────────────────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will the Fed decrease interest rates by 25 bps       Yes 18.0¢ / No    0.913    Yes 15.0¢ / No   Will the Federal Reserve Cut rates by 25bps at      
+  after the April 2026 meeting?                            83.0¢                      77.0¢        their April 2027 meeting?: Cut 25bps                
+  Will the Fed increase interest rates by 25+ bps      Yes 1.2¢ / No     0.895    Yes 8.0¢ / No    Will the Federal Reserve Hike rates by 25bps at     
+  after the April 2026 meeting?                            98.9¢                      93.0¢        their April 2027 meeting?: Hike 25bps               
+  Will the Fed decrease interest rates by 50+ bps      Yes 1.9¢ / No     0.874    Yes 8.0¢ / No    Will the Federal Reserve Cut rates by >25bps at     
+  after the April 2026 meeting?                            98.2¢                      93.0¢        their April 2027 meeting?: Cut >25bps               
+  Will there be no change in Fed interest rates        Yes 80.0¢ / No    0.853    Yes 0.0¢ / No    Will the Federal Reserve Hike rates by 0bps at      
+  after the April 2026 meeting?                            20.5¢                      32.0¢        their April 2027 meeting?: Fed maintains rate       
+                                                                                                                                                       
+──────────────────────────────────────────────── TX-38 Republican Primary Winner  ↔  Which party will win the House race for TX-38?  (event score: 0.860) ─────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Jeff Yuna be the Republican Nominee for         Yes 8.0¢ / No     0.843    Yes 88.0¢ / No   Will Republican win the House race for TX-38?:      
+  TX-38?                                                   95.3¢                      11.0¢        Republican party                                    
+                                                                                                                                                       
+──────────────────────────────────────────────── NC-01 Republican Primary Winner  ↔  Which party will win the House race for NC-01?  (event score: 0.859) ─────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 7 sub-markets, Kalshi has 2)
+───────────────────────────────────────── Next Prime Minister of Hungary  ↔  Who will be Prime Minister of Hungary after the 2026 election?  (event score: 0.858) ─────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will the next Prime Minister of Hungary be Péter     Yes 57.0¢ / No    0.911    Yes 55.0¢ / No   Will Péter Magyar become Prime Minister of Hungary  
+  Magyar?                                                  43.5¢                      46.0¢        following the 2026 Hungarian parliamentary          
+                                                                                                   election?                                           
+  Will the next Prime Minister of Hungary be Viktor    Yes 41.0¢ / No    0.850    Yes 44.0¢ / No   Will Viktor Orbán become Prime Minister of Hungary  
+  Orbán?                                                   59.5¢                      54.0¢        following the 2026 Hungarian parliamentary          
+                                                                                                   election?                                           
+                                                                                                                                                       
+──────────────────────────────────────────────── Top Spotify Artist 2026  ↔  IFPI's Biggest-Selling Global Recording Artist of 2026?  (event score: 0.853) ────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Bad Bunny be the top Spotify artist for 2026?   Yes 59.0¢ / No    0.913    Yes 0.0¢ / No    Will Bad Bunny be #1 on the IFPI's Biggest-Selling  
+                                                           42.5¢                      96.0¢        Global Recording Artist of the Year in 2026?        
+  Will Sabrina Carpenter be the top Spotify artist     Yes 0.6¢ / No     0.902    Yes 0.0¢ / No    Will Sabrina Carpenter be #1 on the IFPI's          
+  for 2026?                                                99.0¢                      96.0¢        Biggest-Selling Global Recording Artist of the      
+                                                                                                   Year in 2026?                                       
+  Will Morgan Wallen be the top Spotify artist for     Yes 0.2¢ / No     0.897    Yes 0.0¢ / No    Will Morgan Wallen be #1 on the IFPI's              
+  2026?                                                    99.8¢                      96.0¢        Biggest-Selling Global Recording Artist of the      
+                                                                                                   Year in 2026?                                       
+  Will The Weeknd be the top Spotify artist for        Yes 1.3¢ / No     0.891    Yes 0.0¢ / No    Will The Weeknd be #1 on the IFPI's                 
+  2026?                                                    98.8¢                      96.0¢        Biggest-Selling Global Recording Artist of the      
+                                                                                                   Year in 2026?                                       
+  Will Kendrick Lamar be the top Spotify artist for    Yes 0.5¢ / No     0.890    Yes 0.0¢ / No    Will Kendrick Lamar be #1 on the IFPI's             
+  2026?                                                    99.2¢                      96.0¢        Biggest-Selling Global Recording Artist of the      
+                                                                                                   Year in 2026?                                       
+  Will Drake be the top Spotify artist for 2026?       Yes 20.0¢ / No    0.890    Yes 0.0¢ / No    Will Drake be #1 on the IFPI's Biggest-Selling      
+                                                           79.5¢                      86.0¢        Global Recording Artist of the Year in 2026?        
+  Will Taylor Swift be the top Spotify artist for      Yes 11.0¢ / No    0.890    Yes 0.0¢ / No    Will Taylor Swift be #1 on the IFPI's               
+  2026?                                                    88.0¢                      86.0¢        Biggest-Selling Global Recording Artist of the      
+                                                                                                   Year in 2026?                                       
+                                                                                                                                                       
+───────────────────────────────────────────────── NBA Defensive Player of the Year Winner  ↔  Defensive Player of the Year Winner?  (event score: 0.851) ──────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 23 sub-markets, Kalshi has 52)
+───────────────────────────── When will the next episode of the UpOnly podcast be released?  ↔  Which guests will appear on the UpOnly podcast by 2027?  (event score: 0.851) ─────────────────────────────
+                                                                                                                                               
+  Polymarket bracket                                  PM price       Score     Kalshi price    Kalshi bracket                                  
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Up Only podcast released by February 28, 2026?   Yes 0.6¢ / No     0.823    Yes 8.0¢ / No    Will GCR be on UpOnly Podcast before Jan 2027?  
+                                                       97.0¢                      90.0¢                                                        
+                                                                                                                                               
+─────────────────────────────────────────────────────────────── Fed decision in March?  ↔  Fed decision in Mar 2027?  (event score: 0.847) ────────────────────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will the Fed decrease interest rates by 25 bps       Yes 4.4¢ / No     0.911    Yes 27.0¢ / No   Will the Federal Reserve Cut rates by 25bps at      
+  after the March 2026 meeting?                            95.6¢                      73.0¢        their March 2027 meeting?: Cut 25bps                
+  Will the Fed increase interest rates by 25+ bps      Yes 0.6¢ / No     0.894    Yes 0.0¢ / No    Will the Federal Reserve Hike rates by 25bps at     
+  after the March 2026 meeting?                            99.4¢                      93.0¢        their March 2027 meeting?: Hike 25bps               
+  Will the Fed decrease interest rates by 50+ bps      Yes 0.7¢ / No     0.877    Yes 9.0¢ / No    Will the Federal Reserve Cut rates by >25bps at     
+  after the March 2026 meeting?                            99.4¢                      91.0¢        their March 2027 meeting?: Cut >25bps               
+  Will there be no change in Fed interest rates        Yes 94.0¢ / No    0.847    Yes 63.0¢ / No   Will the Federal Reserve Hike rates by 0bps at      
+  after the March 2026 meeting?                             6.0¢                      34.0¢        their March 2027 meeting?: Fed maintains rate       
+                                                                                                                                                       
+───────────────────────────────────────── What will the Fed rate be at the end of 2026?  ↔  Will the Fed have an emergency meeting in 2026?  (event score: 0.846) ─────────────────────────────────────────
+  No bracket matches above threshold (PM has 15 sub-markets, Kalshi has 1)
+─────────────────────────────────────────── Trump out as President before 2027?  ↔  How low will Trump's approval rating get before 2027?  (event score: 0.839) ───────────────────────────────────────────
+  No bracket matches above threshold (PM has 1 sub-markets, Kalshi has 8)
+─────────────────────────────────────── Will the US acquire part of Greenland in 2026?  ↔  Will the US take control of any part of Greenland?  (event score: 0.835) ───────────────────────────────────────
+                                                                                                                                                   
+  Polymarket bracket                                  PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will the US acquire part of Greenland in 2026?   Yes 17.0¢ / No    0.934    Yes 3.0¢ / No    Will the United States acquire any part of          
+                                                       82.5¢                      96.0¢        Greenland before Apr 1, 2026?: Before April 2026    
+                                                                                                                                                   
+───────────────────────── # of seats won by PT in 2026 Thailand Legislative Election?  ↔  Who will finish 2nd in the 2026 Thailand parliamentary election?  (event score: 0.834) ──────────────────────────
+  No bracket matches above threshold (PM has 7 sub-markets, Kalshi has 7)
+─────────────────────────────────────────────────── Which countries will Donald Trump visit in 2026?  ↔  2026: Trump's bad year?  (event score: 0.833) ────────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 20 sub-markets, Kalshi has 1)
+─────────────────────────────────────────────── What will SpaceX's public ticker be?  ↔  When will SpaceX officially announce an IPO?  (event score: 0.832) ───────────────────────────────────────────────
+  No bracket matches above threshold (PM has 8 sub-markets, Kalshi has 16)
+───────────────────────────────────── Will Trump cut corporate taxes before 2027?  ↔  How much government spending will Trump cut before 2027?  (event score: 0.832) ──────────────────────────────────────
+  No bracket matches above threshold (PM has 1 sub-markets, Kalshi has 5)
+──────────────────────────────────────── Next Prime Minister of Thailand  ↔  Who will be Prime Minister of Thailand after the 2026 election?  (event score: 0.830) ────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Yodchanan Wongsawat be the next prime           Yes 0.5¢ / No     0.926    Yes 3.0¢ / No    Will Yodchanan Wongsawat become Prime Minister of   
+  minister of Thailand?                                    99.5¢                      97.0¢        Thailand following the 2026 Thailand House of       
+                                                                                                   Representatives election?                           
+  Will Natthaphong Ruengpanyawut be the next prime     Yes 0.2¢ / No     0.926    Yes 6.0¢ / No    Will Natthaphong Ruengpanyawut become Prime         
+  minister of Thailand?                                    99.7¢                      95.0¢        Minister of Thailand following the 2026 Thailand    
+                                                                                                   House of Representatives election?                  
+  Will Anutin Charnvirakul be the next prime           Yes 97.0¢ / No    0.888    Yes 99.0¢ / No   Will Anutin Charnvirakul become Prime Minister of   
+  minister of Thailand?                                     4.8¢                       1.0¢        Thailand following the 2026 Thailand House of       
+                                                                                                   Representatives election?                           
+                                                                                                                                                       
+───────────────────────────────────── Measles cases in U.S. in 2026?  ↔  What will the average number of measles cases be during Trump's term?  (event score: 0.829) ──────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will there be at least 5000 measles cases in the     Yes 54.0¢ / No    0.880    Yes 65.0¢ / No   What will the average number of measles cases be    
+  U.S. in 2026?                                            47.0¢                      36.0¢        during the Trump Administration?: At least 5000     
+  Will there be at least 2000 measles cases in the     Yes 96.3¢ / No    0.875    Yes 89.0¢ / No   What will the average number of measles cases be    
+  U.S. in 2026?                                             3.5¢                       8.0¢        during the Trump Administration?: At least 2000     
+  Will there be at least 1000 measles cases in the     Yes 99.5¢ / No    0.874    Yes 97.0¢ / No   What will the average number of measles cases be    
+  U.S. in 2026?                                             0.6¢                       2.0¢        during the Trump Administration?: At least 1000     
+                                                                                                                                                       
+───────────────────────────────── Which countries will Trump make new trade deals with before 2027?  ↔  Will Trump make a new free trade agreement?  (event score: 0.827) ─────────────────────────────────
+  No bracket matches above threshold (PM has 17 sub-markets, Kalshi has 1)
+───────────────────────── Which candidates will advance to Brazil's presidential runoff?  ↔  Will anyone win outright in the Brazil Presidential election?  (event score: 0.826) ──────────────────────────
+  No bracket matches above threshold (PM has 6 sub-markets, Kalshi has 1)
+───────────────────────────────────────────────── Discord IPO Closing Market Cap  ↔  When will Discord officially announce an IPO?  (event score: 0.822) ──────────────────────────────────────────────────
+                                                                                                                                   
+  Polymarket bracket                          PM price       Score     Kalshi price    Kalshi bracket                              
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Discord not IPO by June 30, 2026?   Yes 24.0¢ / No    0.951    Yes 54.0¢ / No   When will Discord IPO?: Before Jun 1, 2026  
+                                               77.0¢                      47.0¢                                                    
+                                                                                                                                   
+──────────────────────────────────────── 2026 U.S. Senate Election: Democrats flip Republicans by March 31?  ↔  Closest Senate race in 2026?  (event score: 0.820) ────────────────────────────────────────
+  No bracket matches above threshold (PM has 1 sub-markets, Kalshi has 10)
+───────────────────────────────────────── Khamenei out as Supreme Leader of Iran in 2026?  ↔  Who will be the next Supreme Leader of Iran?  (event score: 0.819) ──────────────────────────────────────────
+  No bracket matches above threshold (PM has 1 sub-markets, Kalshi has 12)
+────────────────────────────────────────── Will Putin meet with Zelenskyy by March 31, 2026?  ↔  Where will Putin and Zelenskyy next meet?  (event score: 0.819) ──────────────────────────────────────────
+                                                                                                                                                  
+  Polymarket bracket                                     PM price       Score     Kalshi price    Kalshi bracket                                  
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Putin meet with Zelenskyy by March 31, 2026?   Yes 2.7¢ / No     0.831    Yes 12.0¢ / No   Will Putin and Zelenskyy meet next in Ukraine?  
+                                                          97.2¢                      88.0¢                                                        
+                                                                                                                                                  
+────────────────────────────────────── Who will announce Presidential run before 2027?  ↔  Who will win the 2027 French presidential election?  (event score: 0.815) ──────────────────────────────────────
+  No bracket matches above threshold (PM has 70 sub-markets, Kalshi has 27)
+─────────────────────────────────────────────────────── How many people will Trump deport in 2025?  ↔  Deportations in 2026?  (event score: 0.814) ────────────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 9 sub-markets, Kalshi has 5)
+────────────────────────────── 10.0 or above earthquake before 2027?  ↔  Will there be an at least 8.0 magnitude earthquake in California before 2028?  (event score: 0.812) ──────────────────────────────
+                                                                                                                                          
+  Polymarket bracket                         PM price       Score     Kalshi price    Kalshi bracket                                      
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  10.0 or above earthquake before 2027?   Yes 5.5¢ / No     0.812    Yes 13.0¢ / No   Will there be an at least 8.0 magnitude earthquake  
+                                              94.5¢                      88.0¢        in California before 2028?                          
+                                                                                                                                          
+──────────────────────────────────────────────── Next UK Prime Minister in 2026?  ↔  Who will be the next Prime Minister of the UK?  (event score: 0.811) ─────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Al Carns be the next Prime Minister of the      Yes 1.6¢ / No     0.960    Yes 3.0¢ / No    Will Al Carns be the next Prime Minister of United  
+  United Kingdom in 2026?                                  98.0¢                      92.0¢        Kingdom?                                            
+  Will Rupert Lowe be the next Prime Minister of the   Yes 5.5¢ / No     0.951    Yes 19.0¢ / No   Will Rupert Lowe be the next Prime Minister of      
+  United Kingdom in 2026?                                  94.0¢                      81.0¢        United Kingdom?                                     
+  Will Shabana Mahmood be the next Prime Minister of   Yes 4.4¢ / No     0.948    Yes 7.0¢ / No    Will Shabana Mahmood be the next Prime Minister of  
+  the United Kingdom in 2026?                              96.2¢                      92.0¢        United Kingdom?                                     
+  Will Darren Jones be the next Prime Minister of      Yes 5.8¢ / No     0.945    Yes 1.0¢ / No    Will Darren Jones be the next Prime Minister of     
+  the United Kingdom in 2026?                              94.7¢                      99.0¢        United Kingdom?                                     
+  Will Bridget Phillipson be the next Prime Minister   Yes 0.1¢ / No     0.941    Yes 1.0¢ / No    Will Bridget Phillipson be the next Prime Minister  
+  of the United Kingdom in 2026?                           99.9¢                      99.0¢        of United Kingdom?                                  
+  Will Wes Streeting be the next Prime Minister of     Yes 12.0¢ / No    0.939    Yes 18.0¢ / No   Will Wes Streeting be the next Prime Minister of    
+  the United Kingdom in 2026?                              88.0¢                      81.0¢        United Kingdom?                                     
+  Will Rachel Reeves be the next Prime Minister of     Yes 0.3¢ / No     0.935    Yes 1.0¢ / No    Will Rachel Reeves be the next Prime Minister of    
+  the United Kingdom in 2026?                              99.8¢                      99.0¢        United Kingdom?                                     
+  Will Ed Davey be the next Prime Minister of the      Yes 0.1¢ / No     0.933    Yes 1.0¢ / No    Will Ed Davey be the next Prime Minister of United  
+  United Kingdom in 2026?                                  99.9¢                      99.0¢        Kingdom?                                            
+  Will James Cleverly be the next Prime Minister of    Yes 0.1¢ / No     0.923    Yes 1.0¢ / No    Will James Cleverly be the next Prime Minister of   
+  the United Kingdom in 2026?                              99.9¢                      99.0¢        United Kingdom?                                     
+  Will Angela Rayner be the next Prime Minister of     Yes 13.0¢ / No    0.919    Yes 26.0¢ / No   Will Angela Rayner be the next Prime Minister of    
+  the United Kingdom in 2026?                              85.5¢                      73.0¢        United Kingdom?                                     
+  Will David Lammy be the next Prime Minister of the   Yes 0.6¢ / No     0.919    Yes 12.0¢ / No   Will David Lammy be the next Prime Minister of      
+  United Kingdom in 2026?                                  99.2¢                      91.0¢        United Kingdom?                                     
+  Will Andy Burnham be the next Prime Minister of      Yes 3.1¢ / No     0.908    Yes 1.0¢ / No    Will Andy Burnham be the next Prime Minister of     
+  the United Kingdom in 2026?                              97.1¢                      92.0¢        United Kingdom?                                     
+  Will Yvette Cooper be the next Prime Minister of     Yes 1.2¢ / No     0.904    Yes 4.0¢ / No    Will Yvette Cooper be the next Prime Minister of    
+  the United Kingdom in 2026?                              99.2¢                      95.0¢        United Kingdom?                                     
+  Will Kemi Badenoch be the next Prime Minister of     Yes 0.3¢ / No     0.895    Yes 2.0¢ / No    Will Kemi Badenoch be the next Prime Minister of    
+  the United Kingdom in 2026?                              99.7¢                      97.0¢        United Kingdom?                                     
+  Will Nigel Farage be the next Prime Minister of      Yes 4.6¢ / No     0.887    Yes 8.0¢ / No    Will Nigel Farage be the next Prime Minister of     
+  the United Kingdom in 2026?                              95.5¢                      92.0¢        United Kingdom?                                     
+  Will Lucy Powell be the next Prime Minister of the   Yes 0.7¢ / No     0.872    Yes 2.0¢ / No    Will Lucy Powell be the next  of United Kingdom?    
+  United Kingdom in 2026?                                  99.4¢                      98.0¢                                                            
+  Will Robert Jenrick be the next Prime Minister of    Yes 0.1¢ / No     0.864    Yes 1.0¢ / No    Will Robert Jenrick be the next United Kingdom of   
+  the United Kingdom in 2026?                              99.9¢                      99.0¢        United Kingdom?                                     
+  Will Ed Miliband be the next Prime Minister of the   Yes 8.5¢ / No     0.836    Yes 9.0¢ / No    Will Ed Miliband be the next Prime Minister of      
+  United Kingdom in 2026?                                  91.3¢                      90.0¢        United Kingdom?                                     
+  Will Boris Johnson be the next Prime Minister of     Yes 0.1¢ / No     0.821    Yes 1.0¢ / No    Will Boris Johnson be the next Prime Minister of    
+  the United Kingdom in 2026?                              99.9¢                      99.0¢        United Kingdom?                                     
+                                                                                                                                                       
+───────────────────────────── Kevin Warsh formally nominated as Fed Chair by...?  ↔  When will Warsh’s Fed Chair nomination be received by the Senate?  (event score: 0.810) ──────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Kevin Warsh be formally nominated to be Chair   Yes 77.0¢ / No    0.878    Yes 30.0¢ / No   Will the count of nominations formally received by  
+  of the Federal Reserve by March 31, 2026?                22.5¢                      71.0¢        the US Senate for Kevin Warsh to be Chairman of     
+                                                                                                   the Board of Governors of the Federal Reserve be    
+                                                                                                   above 0 before March?                               
+  Will Kevin Warsh be formally nominated to be Chair   Yes 25.0¢ / No    0.857    Yes 83.0¢ / No   Will the count of nominations formally received by  
+  of the Federal Reserve by February 28, 2026?             76.8¢                      15.0¢        the US Senate for Kevin Warsh to be Chairman of     
+                                                                                                   the Board of Governors of the Federal Reserve be    
+                                                                                                   above 0 before April?                               
+                                                                                                                                                       
+──────────────────────────────────────────────────────── Will GTA 6 cost $100+?  ↔  What will the price of GTA VI be on PS5?  (event score: 0.805) ────────────────────────────────────────────────────────
+                                                                                                                                    
+  Polymarket bracket                    PM price       Score     Kalshi price    Kalshi bracket                                     
+ ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will GTA 6 cost $100+?             Yes 0.5¢ / No     0.909    Yes 11.0¢ / No   What will the price of GTA VI be?: More than $100  
+                                         99.5¢                      87.0¢                                                           
+                                                                                                                                    
+──────────────────────────────────────────────────────────────── US recession by end of 2026?  ↔  Blue wave in 2026?  (event score: 0.800) ────────────────────────────────────────────────────────────────
+                                                                                                                                     
+  Polymarket bracket                    PM price       Score     Kalshi price    Kalshi bracket                                      
+ ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  US recession by end of 2026?       Yes 21.0¢ / No    0.800    Yes 70.0¢ / No   Will Democrats hold 218 or more seats in the House  
+                                         76.5¢                      28.0¢        after the 2026 midterms AND hold 49 or more seats   
+                                                                                 in the Senate after the 2026 midterms?: Will        
+                                                                                 Democrats hold 218 or more seats in the House AND   
+                                                                                 hold 49 or more seats in the Senate?                
+                                                                                                                                     
+───────────────────────────────────────────────────── Anthropic IPO Closing Market Cap  ↔  Will OpenAI or Anthropic IPO first?  (event score: 0.796) ──────────────────────────────────────────────────────
+                                                                                                                              
+  Polymarket bracket                            PM price       Score     Kalshi price    Kalshi bracket                       
+ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Anthropic not IPO by June 30, 2026?   Yes 95.0¢ / No    0.850    Yes 41.0¢ / No   Will OpenAI or Anthropic IPO first?  
+                                                  7.5¢                      60.0¢                                             
+                                                                                                                              
+──────────────────────────────────────────────────── Next leader out of power before 2027?  ↔  Which G7 leader will leave next?  (event score: 0.795) ─────────────────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Sanae Takaichi be the next leader out before    Yes 0.2¢ / No     0.853    Yes 3.0¢ / No    Will Prime Minister of Japan be the first to leave  
+  2027?                                                    99.8¢                      97.0¢        office?: Sanae Takaichi                             
+  Will Emmanuel Macron be the next leader out before   Yes 0.2¢ / No     0.839    Yes 24.0¢ / No   Will President of France be the first to leave      
+  2027?                                                    99.9¢                      72.0¢        office?: Emmanuel Macron                            
+                                                                                                                                                       
+───────────────────────────────────────────── Oscars 2026: Best Original Song Winner  ↔  2026 Grammy nominations for Song of the Year?  (event score: 0.794) ──────────────────────────────────────────────
+  No bracket matches above threshold (PM has 5 sub-markets, Kalshi has 6)
+─────────────────────────────────────────────── Will Trump visit China by...?  ↔  Will Kim Jong-Un visit the US during Trump's term?  (event score: 0.788) ────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 2 sub-markets, Kalshi has 1)
+──────────────────────────────────────────────────── How many Fed rate cuts in 2026?  ↔  Fed funds rate after Mar 2027 meeting?  (event score: 0.785) ─────────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 13 sub-markets, Kalshi has 18)
+─────────────────────── How long will Trump and JD Vance shake hands at the 2026 State of the Union address?  ↔  How many ties will J.D. Vance break in 2026?  (event score: 0.783) ───────────────────────
+  No bracket matches above threshold (PM has 7 sub-markets, Kalshi has 10)
+─────────────────────────────────────────────────────── Natural Disaster in 2026?  ↔  How many government shutdowns in 2026?  (event score: 0.779) ────────────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 1 sub-markets, Kalshi has 4)
+────────────────────────── What nicknames will Trump say during the 2026 State of the Union address?  ↔  Who will leave the Trump administration in 2026?  (event score: 0.779) ───────────────────────────
+  No bracket matches above threshold (PM has 21 sub-markets, Kalshi has 35)
+─────────────────────────────────────────────── Nobel Peace Prize Winner 2026  ↔  Who will be on the cover of Rolling Stone in 2026?  (event score: 0.778) ────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 20 sub-markets, Kalshi has 8)
+────────────────────────────────────── Texas Democratic Senate Primary Winner  ↔  Texas Senate Republican primary 1st round margin of victory?  (event score: 0.778) ──────────────────────────────────────
+  No bracket matches above threshold (PM has 2 sub-markets, Kalshi has 9)
+──────────────────────────────────────────────────────── Tim Walz charged by...?  ↔  Tim Walz out as Governor of Minnesota?  (event score: 0.777) ─────────────────────────────────────────────────────────
+                                                                                                                                           
+  Polymarket bracket                          PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Tim Walz charged by December 31, 2026?   Yes 14.0¢ / No    0.822    Yes 7.0¢ / No    Will Tim Walz leave the governorship of Minnesota   
+                                               85.0¢                      92.0¢        after Issuance and before July 2026?                
+                                                                                                                                           
+───────────────────────────────────────────────────────── Colombia Senate Election Winner  ↔  South Carolina Senate winner?  (event score: 0.776) ─────────────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 13 sub-markets, Kalshi has 2)
+──────────────────────────────────────────────────── Eurovision Winner 2026  ↔  2026 Grammy nominations for Record of the Year?  (event score: 0.775) ─────────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 35 sub-markets, Kalshi has 6)
+──────────────────────────────────────────────────────────── Netanyahu out by end of 2026?  ↔  2026: Trump's dream year?  (event score: 0.775) ────────────────────────────────────────────────────────────
+                                                                                                                                   
+  Polymarket bracket                    PM price       Score     Kalshi price    Kalshi bracket                                    
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Netanyahu out by end of 2026?      Yes 39.0¢ / No    0.775    Yes 8.0¢ / No    Will the bull case for Trump occur in 2026?: Yes  
+                                         61.0¢                      91.0¢                                                          
+                                                                                                                                   
+──────────────────────── Turnout in 2026 Costa Rica Presidential Election First Round  ↔  Will anyone win outright in the Costa Rica Presidential election?  (event score: 0.774) ─────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will turnout in the first round of the 2026 Costa    Yes 90.1¢ / No    0.848    Yes 99.0¢ / No   Will anyone win outright in the first round of the  
+  Rican Presidential Election be between 68% and            5.2¢                       1.0¢        2026 Costa Rica Presidential election?: Yes         
+  70%?                                                                                                                                                 
+                                                                                                                                                       
+──────────────────────────────────────────────────────────── NBA Southeast Division Winner  ↔  NFC South Division Winner  (event score: 0.772) ────────────────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 5 sub-markets, Kalshi has 4)
+────────────────────────────────────────── 2026 NHL Stanley Cup Champion   ↔  Canadian team wins the Stanley Cup® before the 2031 season?  (event score: 0.770) ───────────────────────────────────────────
+  No bracket matches above threshold (PM has 32 sub-markets, Kalshi has 1)
+────────────────────────────────────────────── 2026 Seoul Mayoral Election Winner  ↔  Who will win the 2027 Chicago Mayoral Election?  (event score: 0.770) ───────────────────────────────────────────────
+  No bracket matches above threshold (PM has 10 sub-markets, Kalshi has 7)
+─────────────────────────  Colombia Presidential Election 1st round winner?  ↔  Margin of victory in the 1st round of the Costa Rica Presidential election?  (event score: 0.769) ─────────────────────────
+  No bracket matches above threshold (PM has 17 sub-markets, Kalshi has 9)
+───────────────────────────────────────── Slovenian Parliamentary Election Winner  ↔  Who will win the next Slovak parliamentary election?  (event score: 0.769) ──────────────────────────────────────────
+  No bracket matches above threshold (PM has 15 sub-markets, Kalshi has 3)
+──────────────────────────── Republican Senate seats after the 2026 midterm elections?  ↔  How many Senate seats will Democrats hold after the Midterms?  (event score: 0.768) ────────────────────────────
+  No bracket matches above threshold (PM has 11 sub-markets, Kalshi has 10)
+─────────────────────────────────────────── Who will close Warner Bros. acquisition?  ↔  Who will successfully take over Warner Brothers?  (event score: 0.766) ───────────────────────────────────────────
+                                                                                                                                                       
+  Polymarket bracket                                      PM price       Score     Kalshi price    Kalshi bracket                                      
+ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will Paramount close Warner Bros acquisition?        Yes 41.0¢ / No    0.859    Yes 42.0¢ / No   Will Paramount's takeover of Warner Brothers        
+                                                           59.5¢                      57.0¢        succeed Before July 2027?                           
+  No listed company closes Warner Bros acquisition     Yes 16.0¢ / No    0.835    Yes 12.0¢ / No   Will None's takeover of Warner Brothers succeed     
+  by June 30, 2027                                         84.0¢                      88.0¢        Before July 2027?: None before July 2027            
+  Will Netflix close Warner Bros acquisition?          Yes 43.0¢ / No    0.830    Yes 45.0¢ / No   Will Netflix's takeover of Warner Brothers succeed  
+                                                           54.5¢                      54.0¢        Before July 2027?                                   
+                                                                                                                                                       
+──────────────────────────────────────────────── Oscars 2026: Best Picture Winner  ↔  2026 Grammy nominations for Album of the Year?  (event score: 0.764) ────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 10 sub-markets, Kalshi has 6)
+───────────────────────────────────────────────── How long will the DHS shutdown last?  ↔  Who will be Trump's next DHS secretary?  (event score: 0.762) ──────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 5 sub-markets, Kalshi has 5)
+───────────────────────────── U.S. enacts AI safety bill before 2027?  ↔  Will the US government take control of any AI company or project before 2030?  (event score: 0.762) ─────────────────────────────
+                                                                                                                                            
+  Polymarket bracket                           PM price       Score     Kalshi price    Kalshi bracket                                      
+ ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  U.S. enacts AI safety bill before 2027?   Yes 35.0¢ / No    0.762    Yes 32.0¢ / No   Will the US government take control of any AI       
+                                                66.5¢                      63.0¢        company or project before 2030?                     
+                                                                                                                                            
+──────────────────────────────────────────── Human moon landing in 2026?  ↔  Which country will be the next to send humans to the Moon?  (event score: 0.762) ─────────────────────────────────────────────
+  No bracket matches above threshold (PM has 1 sub-markets, Kalshi has 5)
+─────────────────────────────────────────────── Who will win the 2026 Fields Medal?  ↔  2026 Grammy nominations for Best New Artist?  (event score: 0.760) ────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 10 sub-markets, Kalshi has 61)
+───────────────────────────────────────────────── SpaceX IPO Closing Market Cap  ↔  When will Starlink officially announce an IPO?  (event score: 0.758) ──────────────────────────────────────────────────
+                                                                                                                                        
+  Polymarket bracket                             PM price       Score     Kalshi price    Kalshi bracket                                
+ ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 
+  Will SpaceX not IPO by December 31, 2027?   Yes 4.7¢ / No     0.890    Yes 13.0¢ / No   When will Starlink IPO?: Before Jun 30, 2027  
+                                                  94.5¢                      87.0¢                                                      
+                                                                                                                                        
+────────────────────────────────────────── Trump approval Up or Down this week?  ↔  How high will Trump's approval rating get before 2027?  (event score: 0.757) ──────────────────────────────────────────
+  No bracket matches above threshold (PM has 1 sub-markets, Kalshi has 8)
+────────────────────────────────────────────── Will the U.S. invade Greenland in 2026?  ↔  How much will the US acquire Greenland for?  (event score: 0.757) ──────────────────────────────────────────────
+  No bracket matches above threshold (PM has 1 sub-markets, Kalshi has 8)
+────────────────────────────────────────────────── Santa Cruz Governor Election Winner (Bolivia)  ↔  South Dakota Governor winner?  (event score: 0.753) ──────────────────────────────────────────────────
+  No bracket matches above threshold (PM has 10 sub-markets, Kalshi has 2)
+────────────────────────────────────────────── Who will win the Lyon mayoral election?  ↔  Who will win the Chicago mayoral election?  (event score: 0.753) ───────────────────────────────────────────────
+  No bracket matches above threshold (PM has 6 sub-markets, Kalshi has 9)
+────────────────────────────────────── CDC issues Level 4 warning by December 31?  ↔  Will the US issue a Level 4 travel advisory for Taiwan?  (event score: 0.752) ───────────────────────────────────────
+  No bracket matches above threshold (PM has 1 sub-markets, Kalshi has 5)
+
+Bracket score: cosine similarity (green ≥0.92, yellow ≥0.85, red <0.85)
