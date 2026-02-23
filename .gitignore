@@ -11,3 +11,6 @@ terminal/.vite/
 # Root-level npm artifacts (if any)
 node_modules/
 package-lock.json
+
+# Dev server log
+.server.log
