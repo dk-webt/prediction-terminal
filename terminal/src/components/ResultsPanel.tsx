@@ -1,3 +1,4 @@
+import { useRef, useEffect } from 'react'
 import { useStore } from '../store'
 import type { ArbitrageResult, CompareResult } from '../types'
 
@@ -27,7 +28,13 @@ function openUrl(url: string, e: React.MouseEvent) {
 // ── ARB table ─────────────────────────────────────────────────────────────────
 
 function ArbTable() {
-  const { arbResults, selectedIndex, setSelectedIndex, setActivePanel } = useStore()
+  const { arbResults, selectedIndex, setSelectedIndex, setActivePanel, activePanel } = useStore()
+  const selectedRowRef = useRef<HTMLTableRowElement | null>(null)
+  useEffect(() => {
+    if (activePanel === 2 && selectedIndex !== null && selectedRowRef.current) {
+      selectedRowRef.current.scrollIntoView({ block: 'nearest' })
+    }
+  }, [selectedIndex, activePanel])
 
   if (!arbResults.length) {
     return (
@@ -78,6 +85,7 @@ function ArbTable() {
           return (
             <tr
               key={i}
+              ref={i === selectedIndex ? selectedRowRef : null}
               className={selectedIndex === i ? 'selected' : ''}
               onClick={() => { setActivePanel(2); setSelectedIndex(i) }}
             >
@@ -108,7 +116,13 @@ function ArbTable() {
 // ── Compare table ─────────────────────────────────────────────────────────────
 
 function CmpTable() {
-  const { compareResults, selectedIndex, setSelectedIndex, setActivePanel } = useStore()
+  const { compareResults, selectedIndex, setSelectedIndex, setActivePanel, activePanel } = useStore()
+  const selectedRowRef = useRef<HTMLTableRowElement | null>(null)
+  useEffect(() => {
+    if (activePanel === 2 && selectedIndex !== null && selectedRowRef.current) {
+      selectedRowRef.current.scrollIntoView({ block: 'nearest' })
+    }
+  }, [selectedIndex, activePanel])
 
   if (!compareResults.length) {
     return (
@@ -179,6 +193,7 @@ function CmpTable() {
           return (
             <tr
               key={`b-${ri}`}
+              ref={fi === selectedIndex ? selectedRowRef : null}
               className={selectedIndex === fi ? 'selected' : ''}
               onClick={() => { setActivePanel(2); setSelectedIndex(fi) }}
             >

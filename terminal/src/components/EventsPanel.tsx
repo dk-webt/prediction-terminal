@@ -1,3 +1,4 @@
+import { useRef, useEffect } from 'react'
 import { useStore } from '../store'
 import type { NormalizedEvent } from '../types'
 
@@ -34,6 +35,14 @@ export default function EventsPanel({ source, className, runCommand, focused }: 
     setSelectedIndex(i)
   }
 
+  // Auto-scroll selected row into view when navigating with keyboard
+  const selectedRowRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (isActive && selectedIndex !== null && selectedRowRef.current) {
+      selectedRowRef.current.scrollIntoView({ block: 'nearest' })
+    }
+  }, [selectedIndex, isActive])
+
   return (
     <div className={`panel ${className}${focused ? ' focused' : ''}`}>
       <div className="panel-header">
@@ -67,6 +76,7 @@ export default function EventsPanel({ source, className, runCommand, focused }: 
           events.map((ev, i) => (
             <div
               key={ev.id}
+              ref={isActive && i === selectedIndex ? selectedRowRef : null}
               className={`event-row ${isActive && selectedIndex === i ? 'selected' : ''}`}
               onClick={() => onRowClick(i)}
             >
