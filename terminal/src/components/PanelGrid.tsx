@@ -8,18 +8,14 @@ interface Props {
 }
 
 export default function PanelGrid({ runCommand }: Props) {
-  const { activePanel, activeView } = useStore()
-
-  // On the left column, highlight KS panel when activeView is KS, otherwise PM panel
-  const ksFocused = activePanel === 0 && activeView === 'KS'
-  const pmFocused = activePanel === 0 && !ksFocused
+  const { activePanel } = useStore()
 
   return (
     <div className="panel-grid">
-      <EventsPanel source="PM" className="events-panel-pm" runCommand={runCommand} focused={pmFocused} />
-      <EventsPanel source="KS" className="events-panel-ks" runCommand={runCommand} focused={ksFocused} />
-      <ResultsPanel focused={activePanel === 1} />
-      <DetailPanel focused={activePanel === 2} />
+      <EventsPanel source="PM" className="events-panel-pm" runCommand={runCommand} focused={activePanel === 0} />
+      <EventsPanel source="KS" className="events-panel-ks" runCommand={runCommand} focused={activePanel === 1} />
+      <ResultsPanel focused={activePanel === 2} />
+      <DetailPanel focused={activePanel === 3} />
     </div>
   )
 }

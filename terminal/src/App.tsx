@@ -234,49 +234,48 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName
+      const inInput = tag === 'INPUT'
+
       if (e.key === '/' || e.key === ':') {
-        if (tag !== 'INPUT') {
+        if (!inInput) {
           e.preventDefault()
           cmdBarRef.current?.focus()
         }
       } else if (e.key === 'Escape') {
         cmdBarRef.current?.blur()
       } else if (e.key === 'Tab') {
-        if (tag !== 'INPUT') {
+        if (!inInput) {
           e.preventDefault()
           const s = useStore.getState()
-          const next = ((s.activePanel + 1) % 3) as 0 | 1 | 2
+          // 4 panels: 0=PM, 1=KS, 2=center, 3=detail
+          const next = e.shiftKey
+            ? ((s.activePanel + 3) % 4) as 0 | 1 | 2 | 3   // backward
+            : ((s.activePanel + 1) % 4) as 0 | 1 | 2 | 3   // forward
           s.setActivePanel(next)
-          // Sync activeView so ↑↓ navigates the right data for the focused panel
-          if (next === 0) {
-            if (s.ksEvents.length && !s.pmEvents.length) s.setActiveView('KS')
-            else s.setActiveView('PM')
-          }
-          // Panel 1 keeps whatever view is already showing (ARB/CMP/HELP/CACHE)
-          // Panel 2 (detail) has no navigable rows
+          s.setSelectedIndex(null)   // reset row selection when switching panels
         }
       } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        if (tag !== 'INPUT') {
+        if (!inInput) {
           e.preventDefault()
-          const state = useStore.getState()
-          // CMP uses flat bracket indices; other views use their array directly
-          const navCount =
-            state.activeView === 'CMP'
-              ? state.compareResults.reduce((s, cr) => s + cr.market_matches.length, 0)
-              : state.activeView === 'ARB'
-              ? state.arbResults.length
-              : state.activeView === 'PM'
-              ? state.pmEvents.length
-              : state.activeView === 'KS'
-              ? state.ksEvents.length
-              : 0
+          const s = useStore.getState()
+          // Derive navigable count from activePanel, not activeView
+          // so Tab focus drives ↑↓ independently of what the center panel shows
+          let navCount = 0
+          if (s.activePanel === 0) navCount = s.pmEvents.length
+          else if (s.activePanel === 1) navCount = s.ksEvents.length
+          else if (s.activePanel === 2) {
+            if (s.activeView === 'ARB') navCount = s.arbResults.length
+            else if (s.activeView === 'CMP')
+              navCount = s.compareResults.reduce((sum, cr) => sum + cr.market_matches.length, 0)
+          }
+          // panel 3 (detail) has no navigable rows
           if (!navCount) return
-          const cur = state.selectedIndex ?? -1
+          const cur = s.selectedIndex ?? -1
           const next =
             e.key === 'ArrowDown'
               ? Math.min(cur + 1, navCount - 1)
               : Math.max(cur - 1, 0)
-          state.setSelectedIndex(next)
+          s.setSelectedIndex(next)
         }
       }
     }

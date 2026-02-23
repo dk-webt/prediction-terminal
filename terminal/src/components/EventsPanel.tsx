@@ -19,16 +19,17 @@ interface Props {
 }
 
 export default function EventsPanel({ source, className, runCommand, focused }: Props) {
-  const { pmEvents, ksEvents, activeView, selectedIndex, setSelectedIndex, setActiveView } =
+  const { pmEvents, ksEvents, activePanel, selectedIndex, setSelectedIndex, setActivePanel } =
     useStore()
 
   const events = source === 'PM' ? pmEvents : ksEvents
-  const isActive = activeView === source
+  const panelId = source === 'PM' ? 0 : 1   // 0=PM panel, 1=KS panel
+  const isActive = activePanel === panelId
   const label = source === 'PM' ? 'POLYMARKET' : 'KALSHI'
   const cmdKey = source
 
   const onRowClick = (i: number) => {
-    setActiveView(source)
+    setActivePanel(panelId)
     setSelectedIndex(i)
   }
 

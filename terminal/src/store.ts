@@ -21,7 +21,7 @@ interface TerminalState {
   // UI state
   activeView: View
   selectedIndex: number | null       // index into active result list
-  activePanel: 0 | 1 | 2            // 0=left, 1=center, 2=right
+  activePanel: 0 | 1 | 2 | 3        // 0=PM, 1=KS, 2=center, 3=detail
 
   // Status / feedback
   loading: boolean
@@ -40,7 +40,7 @@ interface TerminalState {
   setCacheStatsBar: (v: CacheStats | null) => void
   setActiveView: (v: View) => void
   setSelectedIndex: (v: number | null) => void
-  setActivePanel: (v: 0 | 1 | 2) => void
+  setActivePanel: (v: 0 | 1 | 2 | 3) => void
   setLoading: (v: boolean) => void
   setProgressMsg: (v: string) => void
   setErrorMsg: (v: string) => void
