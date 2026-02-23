@@ -116,12 +116,15 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid transparent;
-  transition: border-color 0.1s;
 }
 
-.panel.focused {
-  border-color: var(--amber);
+/* Focused panel: amber underline on the header bar + brighter title */
+.panel.focused .panel-header {
+  border-bottom-color: var(--amber);
+}
+
+.panel.focused .panel-title {
+  color: var(--amber-hi);
 }
 
 .panel-header {
