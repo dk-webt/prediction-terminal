@@ -71,7 +71,7 @@ def _serialize_compare(pairs: list) -> list:
 Progress = Callable[[str], None]
 
 
-def _run_arb(limit: int, progress: Progress, **kwargs) -> list:
+def _run_arb(limit: int, progress: Progress, **kwargs) -> dict:
     progress("Fetching Polymarket events…")
     from clients.polymarket import fetch_events as pm_fetch
     pm_events = pm_fetch(limit=limit)
@@ -96,10 +96,10 @@ def _run_arb(limit: int, progress: Progress, **kwargs) -> list:
         max_days=kwargs.get("max_days"),
     )
     progress(f"Found {len(results)} arbitrage opportunities.")
-    return results
+    return {"results": results, "pm_events": pm_events, "ks_events": ks_events}
 
 
-def _run_compare(limit: int, progress: Progress, **kwargs) -> list:
+def _run_compare(limit: int, progress: Progress, **kwargs) -> dict:
     progress("Fetching Polymarket events…")
     from clients.polymarket import fetch_events as pm_fetch
     pm_events = pm_fetch(limit=limit)
@@ -118,22 +118,45 @@ def _run_compare(limit: int, progress: Progress, **kwargs) -> list:
     )
     n_brackets = sum(len(m) for _, m in pairs)
     progress(f"Matched {len(pairs)} event pairs, {n_brackets} brackets.")
-    return pairs
+    return {"pairs": pairs, "pm_events": pm_events, "ks_events": ks_events}
 
 
 # ── WebSocket streaming helper ─────────────────────────────────────────────────
+
+
+def _transform_arb_done(raw: dict) -> dict:
+    """Build the 'done' payload for an ARB run, including raw event lists."""
+    return {
+        "data": _serialize(raw["results"]),
+        "pm_events": _serialize(raw["pm_events"]),
+        "ks_events": _serialize(raw["ks_events"]),
+    }
+
+
+def _transform_cmp_done(raw: dict) -> dict:
+    """Build the 'done' payload for a CMP run, including raw event lists."""
+    return {
+        "data": _serialize_compare(raw["pairs"]),
+        "pm_events": _serialize(raw["pm_events"]),
+        "ks_events": _serialize(raw["ks_events"]),
+    }
 
 
 async def _stream_ws(websocket: WebSocket, sync_fn, *args, **kwargs):
     """
     Run sync_fn(*args, progress=cb, **kwargs) in a thread pool.
     Stream progress messages to websocket until done, then send result.
-    Pass serialize_fn=fn in kwargs to use a custom serializer.
+
+    Optional kwargs (popped before forwarding to sync_fn):
+      serialize_fn=fn   — custom serializer for the raw result
+      transform_done=fn — takes raw result, returns dict merged into 'done' message
+                          (overrides serialize_fn when provided)
     """
     q: sync_queue.Queue = sync_queue.Queue()
     result_holder: list = []
     error_holder: list = []
     serialize_fn = kwargs.pop("serialize_fn", None)
+    transform_done = kwargs.pop("transform_done", None)
 
     def progress_cb(msg: str) -> None:
         q.put(("progress", msg))
@@ -164,9 +187,13 @@ async def _stream_ws(websocket: WebSocket, sync_fn, *args, **kwargs):
     if error_holder:
         await websocket.send_json({"type": "error", "msg": error_holder[0]})
     else:
-        raw = result_holder[0] if result_holder else []
-        data = serialize_fn(raw) if serialize_fn else _serialize(raw)
-        await websocket.send_json({"type": "done", "data": data})
+        raw = result_holder[0] if result_holder else {}
+        if transform_done:
+            payload = {"type": "done", **transform_done(raw)}
+        else:
+            data = serialize_fn(raw) if serialize_fn else _serialize(raw)
+            payload = {"type": "done", "data": data}
+        await websocket.send_json(payload)
 
 
 # ── REST endpoints ─────────────────────────────────────────────────────────────
@@ -228,6 +255,7 @@ async def websocket_status(websocket: WebSocket):
             if cmd == "arb":
                 await _stream_ws(
                     websocket, _run_arb, limit,
+                    transform_done=_transform_arb_done,
                     event_min_score=float(data.get("event_min_score", 0.75)),
                     market_min_score=float(data.get("market_min_score", 0.82)),
                     min_profit=float(data.get("min_profit", 0.0)),
@@ -237,7 +265,7 @@ async def websocket_status(websocket: WebSocket):
             elif cmd == "compare":
                 await _stream_ws(
                     websocket, _run_compare, limit,
-                    serialize_fn=_serialize_compare,
+                    transform_done=_transform_cmp_done,
                     event_min_score=float(data.get("event_min_score", 0.75)),
                     market_min_score=float(data.get("market_min_score", 0.82)),
                     refresh_cache=bool(data.get("refresh_cache", False)),

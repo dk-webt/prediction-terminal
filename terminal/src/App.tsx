@@ -49,8 +49,15 @@ export default function App() {
         const state = useStore.getState()
         state.setLoading(false)
         state.setProgressMsg('')
-        if (cmd === 'ARB') state.setArbResults(msg.data)
-        else if (cmd === 'CMP') state.setCompareResults(msg.data)
+        if (cmd === 'ARB') {
+          state.setArbResults(msg.data)
+          if (msg.pm_events) state.setPmEvents(msg.pm_events)
+          if (msg.ks_events) state.setKsEvents(msg.ks_events)
+        } else if (cmd === 'CMP') {
+          state.setCompareResults(msg.data)
+          if (msg.pm_events) state.setPmEvents(msg.pm_events)
+          if (msg.ks_events) state.setKsEvents(msg.ks_events)
+        }
         state.setSelectedIndex(null)
         pendingCmdRef.current = ''
       } else if (msg.type === 'error') {
