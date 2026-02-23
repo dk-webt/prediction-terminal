@@ -27,7 +27,7 @@ function openUrl(url: string, e: React.MouseEvent) {
 // ── ARB table ─────────────────────────────────────────────────────────────────
 
 function ArbTable() {
-  const { arbResults, selectedIndex, setSelectedIndex } = useStore()
+  const { arbResults, selectedIndex, setSelectedIndex, setActivePanel } = useStore()
 
   if (!arbResults.length) {
     return (
@@ -79,7 +79,7 @@ function ArbTable() {
             <tr
               key={i}
               className={selectedIndex === i ? 'selected' : ''}
-              onClick={() => setSelectedIndex(i)}
+              onClick={() => { setActivePanel(2); setSelectedIndex(i) }}
             >
               <td title={r.poly_market.question}>
                 <a href="#" onClick={(e) => openUrl(r.poly_market.url, e)}>
@@ -108,7 +108,7 @@ function ArbTable() {
 // ── Compare table ─────────────────────────────────────────────────────────────
 
 function CmpTable() {
-  const { compareResults, selectedIndex, setSelectedIndex } = useStore()
+  const { compareResults, selectedIndex, setSelectedIndex, setActivePanel } = useStore()
 
   if (!compareResults.length) {
     return (
@@ -180,7 +180,7 @@ function CmpTable() {
             <tr
               key={`b-${ri}`}
               className={selectedIndex === fi ? 'selected' : ''}
-              onClick={() => setSelectedIndex(fi)}
+              onClick={() => { setActivePanel(2); setSelectedIndex(fi) }}
             >
               <td title={mm.poly_market.question}>
                 <a href="#" onClick={(e) => openUrl(mm.poly_market.url, e)}>

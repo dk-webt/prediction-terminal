@@ -19,7 +19,7 @@ interface Props {
 }
 
 export default function EventsPanel({ source, className, runCommand, focused }: Props) {
-  const { pmEvents, ksEvents, activePanel, selectedIndex, setSelectedIndex, setActivePanel } =
+  const { pmEvents, ksEvents, activePanel, selectedIndex, setSelectedIndex, setActivePanel, setActiveView } =
     useStore()
 
   const events = source === 'PM' ? pmEvents : ksEvents
@@ -30,6 +30,7 @@ export default function EventsPanel({ source, className, runCommand, focused }: 
 
   const onRowClick = (i: number) => {
     setActivePanel(panelId)
+    setActiveView(source)   // keeps center title + detail panel in sync
     setSelectedIndex(i)
   }
 

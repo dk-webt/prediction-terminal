@@ -168,14 +168,14 @@ function EventDetail({ ev }: { ev: NormalizedEvent }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function DetailPanel({ focused }: { focused: boolean }) {
-  const { activeView, selectedIndex, arbResults, compareResults, pmEvents, ksEvents } = useStore()
+  const { activeView, activePanel, selectedIndex, arbResults, compareResults, pmEvents, ksEvents } = useStore()
 
   let content: React.ReactNode = null
 
   if (selectedIndex !== null) {
-    if (activeView === 'ARB' && arbResults[selectedIndex]) {
+    if (activePanel === 2 && activeView === 'ARB' && arbResults[selectedIndex]) {
       content = <ArbDetail r={arbResults[selectedIndex]} />
-    } else if (activeView === 'CMP') {
+    } else if (activePanel === 2 && activeView === 'CMP') {
       // Find the flat bracket index across all compare groups
       let fi = 0
       let found = false
@@ -190,9 +190,9 @@ export default function DetailPanel({ focused }: { focused: boolean }) {
         }
         if (found) break
       }
-    } else if (activeView === 'PM' && pmEvents[selectedIndex]) {
+    } else if (activePanel === 0 && pmEvents[selectedIndex]) {
       content = <EventDetail ev={pmEvents[selectedIndex]} />
-    } else if (activeView === 'KS' && ksEvents[selectedIndex]) {
+    } else if (activePanel === 1 && ksEvents[selectedIndex]) {
       content = <EventDetail ev={ksEvents[selectedIndex]} />
     }
   }

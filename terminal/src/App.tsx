@@ -276,6 +276,9 @@ export default function App() {
               ? Math.min(cur + 1, navCount - 1)
               : Math.max(cur - 1, 0)
           s.setSelectedIndex(next)
+          // Keep activeView in sync so DetailPanel + center title stay correct
+          if (s.activePanel === 0) s.setActiveView('PM')
+          else if (s.activePanel === 1) s.setActiveView('KS')
         }
       }
     }
