@@ -52,7 +52,7 @@ def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: st
         parent_event_id=parent_event_id,
         parent_event_title=parent_event_title,
         close_time=(m.get("close_time") or "")[:10],
-        url=f"{MARKET_URL}/{m.get('ticker', '').split('/')[-1]}",
+        url=f"{MARKET_URL}/{m.get('ticker', '').split('/')[-1].rstrip('-')}",
     )
 
 
