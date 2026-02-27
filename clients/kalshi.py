@@ -52,7 +52,7 @@ def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: st
         parent_event_id=parent_event_id,
         parent_event_title=parent_event_title,
         close_time=(m.get("close_time") or "")[:10],
-        url=f"{MARKET_URL}/{m.get('ticker', '').split('/')[-1].rstrip('-')}",
+        url=f"{MARKET_URL}/{parent_event_id}",
     )
 
 
@@ -79,7 +79,7 @@ def _normalize_event(e: dict) -> NormalizedEvent:
         volume=total_volume,
         liquidity=_safe_float(e.get("liquidity")),
         end_date=end_date,
-        url=f"{EVENT_URL}/{ticker}",
+        url=f"{MARKET_URL}/{ticker}",
         markets=markets,
     )
 
