@@ -79,7 +79,7 @@ def _normalize_event(e: dict) -> NormalizedEvent:
         volume=total_volume,
         liquidity=_safe_float(e.get("liquidity")),
         end_date=end_date,
-        url=f"{MARKET_URL}/{ticker}",
+        url=f"{EVENT_URL}/{ticker}",
         markets=markets,
     )
 
