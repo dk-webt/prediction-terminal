@@ -35,16 +35,42 @@ def _build_question(m: dict, event_title: str) -> str:
     return title
 
 
-def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: str = "", series_ticker: str = "") -> NormalizedMarket:
+# Module-level cache: series_ticker -> URL slug, populated lazily on first fetch.
+# Kalshi URL format: /markets/{series_ticker_lower}/{slug}/{event_ticker_lower}
+# Slug = series title lowercased with spaces replaced by hyphens ("New Pope" -> "new-pope").
+_series_slug_cache: dict[str, str] = {}
+
+
+def _get_series_slug(series_ticker: str) -> str:
+    """
+    Fetch the URL slug for a series from the Kalshi /series endpoint.
+    Falls back to series_ticker.lower() if the fetch fails.
+    Results are cached in memory for the lifetime of the process.
+    """
+    if series_ticker in _series_slug_cache:
+        return _series_slug_cache[series_ticker]
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/series/{series_ticker}",
+            headers=_get_headers(),
+            timeout=10,
+        )
+        resp.raise_for_status()
+        title = resp.json().get("series", {}).get("title", "")
+        slug = title.lower().replace(" ", "-") if title else series_ticker.lower()
+    except Exception:
+        slug = series_ticker.lower()
+    _series_slug_cache[series_ticker] = slug
+    return slug
+
+
+def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: str = "", event_url: str = "") -> NormalizedMarket:
     # Prices are in cents (0-100); convert to probability (0.0-1.0)
     yes_price = _safe_float(m.get("last_price", 0)) / 100.0
     no_price = _safe_float(m.get("no_bid", 0)) / 100.0
     if no_price == 0.0 and yes_price > 0.0:
         no_price = round(1.0 - yes_price, 4)
 
-    # series_ticker (e.g. "KXNEWPOPE") is the correct URL slug on kalshi.com/markets/
-    # event_ticker (e.g. "KXNEWPOPE-70") and market ticker (e.g. "KXNEWPOPE-70-PPAR") both 404
-    url_slug = series_ticker or parent_event_id
     return NormalizedMarket(
         question=_build_question(m, parent_event_title),
         yes_price=yes_price,
@@ -55,7 +81,7 @@ def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: st
         parent_event_id=parent_event_id,
         parent_event_title=parent_event_title,
         close_time=(m.get("close_time") or "")[:10],
-        url=f"{MARKET_URL}/{url_slug}",
+        url=event_url,
     )
 
 
@@ -64,9 +90,14 @@ def _normalize_event(e: dict) -> NormalizedEvent:
     series_ticker = e.get("series_ticker", ticker)
     event_title = e.get("title", "")
 
+    # Build exact event URL: /markets/{series}/{slug}/{event_ticker}
+    # e.g. https://kalshi.com/markets/kxnewpope/new-pope/kxnewpope-70
+    slug = _get_series_slug(series_ticker)
+    event_url = f"{MARKET_URL}/{series_ticker.lower()}/{slug}/{ticker.lower()}"
+
     # Only include active sub-markets
     raw_markets = [m for m in e.get("markets", []) if m.get("status") == "active"]
-    markets = [_normalize_market(m, parent_event_id=ticker, parent_event_title=event_title, series_ticker=series_ticker)
+    markets = [_normalize_market(m, parent_event_id=ticker, parent_event_title=event_title, event_url=event_url)
                for m in raw_markets]
 
     total_volume = sum(m.volume for m in markets)
@@ -83,7 +114,7 @@ def _normalize_event(e: dict) -> NormalizedEvent:
         volume=total_volume,
         liquidity=_safe_float(e.get("liquidity")),
         end_date=end_date,
-        url=f"{MARKET_URL}/{series_ticker}",
+        url=event_url,
         markets=markets,
     )
 
