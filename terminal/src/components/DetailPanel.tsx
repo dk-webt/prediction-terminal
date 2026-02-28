@@ -14,10 +14,6 @@ function stripPrefix(question: string, prefix: string) {
   return question.startsWith(pre) ? question.slice(pre.length) : question
 }
 
-function openUrl(url: string, e: React.MouseEvent) {
-  e.preventDefault()
-  if (url) window.open(url, '_blank')
-}
 
 function Label({ children }: { children: React.ReactNode }) {
   return <div className="detail-label">{children}</div>
@@ -44,14 +40,14 @@ function ArbDetail({ r }: { r: ArbitrageResult }) {
     <div className="detail-body">
       <Label>POLYMARKET</Label>
       <Val>
-        <a className="detail-link" href="#" onClick={(e) => openUrl(r.poly_market.url, e)}>
+        <a className="detail-link" href={r.poly_market.url} target="_blank" rel="noopener noreferrer">
           {r.poly_market.question}
         </a>
       </Val>
 
       <Label>KALSHI</Label>
       <Val>
-        <a className="detail-link" href="#" onClick={(e) => openUrl(r.kalshi_market.url, e)}>
+        <a className="detail-link" href={r.kalshi_market.url} target="_blank" rel="noopener noreferrer">
           {ksQ}
         </a>
       </Val>
@@ -103,14 +99,14 @@ function CmpDetail({ mm }: { mm: MarketMatchResult }) {
     <div className="detail-body">
       <Label>POLYMARKET</Label>
       <Val>
-        <a className="detail-link" href="#" onClick={(e) => openUrl(mm.poly_market.url, e)}>
+        <a className="detail-link" href={mm.poly_market.url} target="_blank" rel="noopener noreferrer">
           {mm.poly_market.question}
         </a>
       </Val>
 
       <Label>KALSHI</Label>
       <Val>
-        <a className="detail-link" href="#" onClick={(e) => openUrl(mm.kalshi_market.url, e)}>
+        <a className="detail-link" href={mm.kalshi_market.url} target="_blank" rel="noopener noreferrer">
           {ksQ}
         </a>
       </Val>
@@ -137,7 +133,7 @@ function EventDetail({ ev }: { ev: NormalizedEvent }) {
     <div className="detail-body">
       <Label>{ev.source.toUpperCase()} EVENT</Label>
       <Val>
-        <a className="detail-link" href="#" onClick={(e) => openUrl(ev.url, e)}>
+        <a className="detail-link" href={ev.url} target="_blank" rel="noopener noreferrer">
           {ev.title}
         </a>
       </Val>

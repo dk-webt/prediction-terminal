@@ -20,9 +20,8 @@ function stripPrefix(question: string, prefix: string) {
   return question.startsWith(pre) ? question.slice(pre.length) : question
 }
 
-function openUrl(url: string, e: React.MouseEvent) {
+function linkClick(e: React.MouseEvent) {
   e.stopPropagation()
-  if (url) window.open(url, '_blank')
 }
 
 // ── ARB table ─────────────────────────────────────────────────────────────────
@@ -90,13 +89,13 @@ function ArbTable() {
               onClick={() => { setActivePanel(2); setSelectedIndex(i) }}
             >
               <td title={r.poly_market.question}>
-                <a href="#" onClick={(e) => openUrl(r.poly_market.url, e)}>
+                <a href={r.poly_market.url} target="_blank" rel="noopener noreferrer" onClick={linkClick}>
                   {r.poly_market.question}
                 </a>
               </td>
               <td style={{ whiteSpace: 'pre' }}>{pmLeg}</td>
               <td title={ksQ}>
-                <a href="#" onClick={(e) => openUrl(r.kalshi_market.url, e)}>
+                <a href={r.kalshi_market.url} target="_blank" rel="noopener noreferrer" onClick={linkClick}>
                   {ksQ}
                 </a>
               </td>
@@ -198,7 +197,7 @@ function CmpTable() {
               onClick={() => { setActivePanel(2); setSelectedIndex(fi) }}
             >
               <td title={mm.poly_market.question}>
-                <a href="#" onClick={(e) => openUrl(mm.poly_market.url, e)}>
+                <a href={mm.poly_market.url} target="_blank" rel="noopener noreferrer" onClick={linkClick}>
                   {mm.poly_market.question}
                 </a>
               </td>
@@ -206,7 +205,7 @@ function CmpTable() {
               <td className={`right ${scoreClass(mm.score)}`}>{fmtScore(mm.score)}</td>
               <td>{ksP}</td>
               <td title={ksQ}>
-                <a href="#" onClick={(e) => openUrl(mm.kalshi_market.url, e)}>
+                <a href={mm.kalshi_market.url} target="_blank" rel="noopener noreferrer" onClick={linkClick}>
                   {ksQ}
                 </a>
               </td>
