@@ -35,13 +35,16 @@ def _build_question(m: dict, event_title: str) -> str:
     return title
 
 
-def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: str = "") -> NormalizedMarket:
+def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: str = "", series_ticker: str = "") -> NormalizedMarket:
     # Prices are in cents (0-100); convert to probability (0.0-1.0)
     yes_price = _safe_float(m.get("last_price", 0)) / 100.0
     no_price = _safe_float(m.get("no_bid", 0)) / 100.0
     if no_price == 0.0 and yes_price > 0.0:
         no_price = round(1.0 - yes_price, 4)
 
+    # series_ticker (e.g. "KXNEWPOPE") is the correct URL slug on kalshi.com/markets/
+    # event_ticker (e.g. "KXNEWPOPE-70") and market ticker (e.g. "KXNEWPOPE-70-PPAR") both 404
+    url_slug = series_ticker or parent_event_id
     return NormalizedMarket(
         question=_build_question(m, parent_event_title),
         yes_price=yes_price,
@@ -52,17 +55,18 @@ def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: st
         parent_event_id=parent_event_id,
         parent_event_title=parent_event_title,
         close_time=(m.get("close_time") or "")[:10],
-        url=f"{MARKET_URL}/{parent_event_id}",
+        url=f"{MARKET_URL}/{url_slug}",
     )
 
 
 def _normalize_event(e: dict) -> NormalizedEvent:
     ticker = e.get("event_ticker", e.get("ticker", ""))
+    series_ticker = e.get("series_ticker", ticker)
     event_title = e.get("title", "")
 
     # Only include active sub-markets
     raw_markets = [m for m in e.get("markets", []) if m.get("status") == "active"]
-    markets = [_normalize_market(m, parent_event_id=ticker, parent_event_title=event_title)
+    markets = [_normalize_market(m, parent_event_id=ticker, parent_event_title=event_title, series_ticker=series_ticker)
                for m in raw_markets]
 
     total_volume = sum(m.volume for m in markets)
@@ -79,7 +83,7 @@ def _normalize_event(e: dict) -> NormalizedEvent:
         volume=total_volume,
         liquidity=_safe_float(e.get("liquidity")),
         end_date=end_date,
-        url=f"{MARKET_URL}/{ticker}",
+        url=f"{MARKET_URL}/{series_ticker}",
         markets=markets,
     )
 
