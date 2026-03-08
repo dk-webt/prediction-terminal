@@ -15,9 +15,10 @@ export default function App() {
 
   const {
     setLoading, setProgressMsg, setErrorMsg,
-    setPmEvents, setKsEvents, setArbResults, setCompareResults,
+    setPmEvents, setKsEvents,
     setCacheStats, setCategories, setActiveView, setActiveCategory, setLastCommand, setWsStatus,
     setCacheStatsBar, setSelectedIndex, setActivePanel, setDefaultLimit,
+    setCenterView, navigateCenterHistory, jumpToCenterHistory,
     activePanel, defaultLimit,
   } = useStore()
 
@@ -50,13 +51,30 @@ export default function App() {
         state.setLoading(false)
         state.setProgressMsg('')
         if (cmd === 'ARB') {
-          state.setArbResults(msg.data)
           if (msg.pm_events) state.setPmEvents(msg.pm_events)
           if (msg.ks_events) state.setKsEvents(msg.ks_events)
+          state.pushCenterSnapshot({
+            view: 'ARB',
+            arbResults: msg.data,
+            compareResults: state.compareResults,
+            timestamp: new Date().toISOString(),
+            label: state.lastCommand,
+            resultCount: (msg.data as unknown[]).length,
+          })
         } else if (cmd === 'CMP') {
-          state.setCompareResults(msg.data)
           if (msg.pm_events) state.setPmEvents(msg.pm_events)
           if (msg.ks_events) state.setKsEvents(msg.ks_events)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const cmpData = msg.data as any[]
+          const resultCount = cmpData.reduce((s: number, cr: { market_matches: unknown[] }) => s + cr.market_matches.length, 0)
+          state.pushCenterSnapshot({
+            view: 'CMP',
+            arbResults: state.arbResults,
+            compareResults: cmpData,
+            timestamp: new Date().toISOString(),
+            label: state.lastCommand,
+            resultCount,
+          })
         }
         state.setSelectedIndex(null)
         pendingCmdRef.current = ''
@@ -128,7 +146,6 @@ export default function App() {
       switch (cmd) {
         case 'PM': {
           setLoading(true)
-          setActiveView('PM')
           setProgressMsg(`Fetching ${limit} Polymarket events…`)
           setSelectedIndex(null)
           fetch(`${API}/events/polymarket?limit=${limit}`)
@@ -147,7 +164,6 @@ export default function App() {
 
         case 'KS': {
           setLoading(true)
-          setActiveView('KS')
           setProgressMsg(`Fetching ${limit} Kalshi events…`)
           setSelectedIndex(null)
           fetch(`${API}/events/kalshi?limit=${limit}`)
@@ -172,6 +188,7 @@ export default function App() {
           pendingCmdRef.current = 'ARB'
           setLoading(true)
           setActiveView('ARB')
+          setCenterView('ARB')
           setActiveCategory(category ?? null)
           setProgressMsg('Starting arbitrage scan…')
           setSelectedIndex(null)
@@ -187,6 +204,7 @@ export default function App() {
           pendingCmdRef.current = 'CMP'
           setLoading(true)
           setActiveView('CMP')
+          setCenterView('CMP')
           setActiveCategory(category ?? null)
           setProgressMsg('Starting comparison…')
           setSelectedIndex(null)
@@ -194,8 +212,21 @@ export default function App() {
           break
         }
 
+        case 'HIST': {
+          const histArg = parts[1]
+          const histN = histArg ? parseInt(histArg, 10) : NaN
+          if (!isNaN(histN) && histN > 0) {
+            jumpToCenterHistory(histN - 1)
+          } else {
+            setActiveView('HIST')
+            setCenterView('HIST')
+          }
+          break
+        }
+
         case 'CACHE': {
           setActiveView('CACHE')
+          setCenterView('CACHE')
           fetch(`${API}/cache/stats`)
             .then((r) => r.json())
             .then((data) => setCacheStats(data))
@@ -226,6 +257,7 @@ export default function App() {
 
         case 'CATS': {
           setActiveView('CATS')
+          setCenterView('CATS')
           setLoading(true)
           setProgressMsg('Fetching categories from both platforms…')
           fetch(`${API}/categories`)
@@ -245,6 +277,7 @@ export default function App() {
         case '?':
         case 'HELP': {
           setActiveView('HELP')
+          setCenterView('HELP')
           break
         }
 
@@ -308,15 +341,16 @@ export default function App() {
               ? Math.min(cur + 1, navCount - 1)
               : Math.max(cur - 1, 0)
           s.setSelectedIndex(next)
-          // Keep activeView in sync so DetailPanel + center title stay correct
-          if (s.activePanel === 0) s.setActiveView('PM')
-          else if (s.activePanel === 1) s.setActiveView('KS')
         }
+      } else if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault()
+        const s = useStore.getState()
+        s.navigateCenterHistory(e.key === 'ArrowLeft' ? -1 : 1)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [navigateCenterHistory])
 
   return (
     <div className="app">

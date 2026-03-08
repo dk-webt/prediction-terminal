@@ -15,7 +15,8 @@ function useClock() {
 
 export default function StatusBar() {
   const time = useClock()
-  const { wsStatus, cacheStatsBar, lastCommand, progressMsg, errorMsg, defaultLimit } = useStore()
+  const { wsStatus, cacheStatsBar, lastCommand, progressMsg, errorMsg, defaultLimit,
+          pmEvents, ksEvents, centerHistory, centerHistoryIndex } = useStore()
 
   return (
     <div className="status-bar">
@@ -35,6 +36,26 @@ export default function StatusBar() {
       )}
       <span className="separator">│</span>
       <span>LIMIT {defaultLimit}</span>
+      <span className="separator">│</span>
+      <span>
+        <span style={{ color: pmEvents.length > 0 ? 'var(--green)' : 'var(--amber-dim)' }}>
+          PM {pmEvents.length > 0 ? pmEvents.length : '—'}
+        </span>
+        {' / '}
+        <span style={{ color: ksEvents.length > 0 ? 'var(--green)' : 'var(--amber-dim)' }}>
+          KS {ksEvents.length > 0 ? ksEvents.length : '—'}
+        </span>
+      </span>
+      {centerHistory.length > 0 && (
+        <>
+          <span className="separator">│</span>
+          <span title="Alt+← / Alt+→ to navigate history">
+            {centerHistoryIndex > 0 ? '◀ ' : ''}
+            HIST {centerHistoryIndex + 1}/{centerHistory.length}
+            {centerHistoryIndex < centerHistory.length - 1 ? ' ▶' : ''}
+          </span>
+        </>
+      )}
       {lastCommand && (
         <>
           <span className="separator">│</span>

@@ -6,8 +6,18 @@ import type {
   CacheStats,
 } from './types'
 
-export type View = 'IDLE' | 'PM' | 'KS' | 'ARB' | 'CMP' | 'HELP' | 'CACHE' | 'CATS'
+export type View = 'IDLE' | 'PM' | 'KS' | 'ARB' | 'CMP' | 'HELP' | 'CACHE' | 'CATS' | 'HIST'
+export type CenterView = 'IDLE' | 'ARB' | 'CMP' | 'HELP' | 'CACHE' | 'CATS' | 'HIST'
 export type WsStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
+
+export type CenterSnapshot = {
+  view: 'ARB' | 'CMP'
+  arbResults: ArbitrageResult[]
+  compareResults: CompareResult[]
+  timestamp: string   // ISO datetime
+  label: string       // command that produced it, e.g. "ARB 200 SPORTS"
+  resultCount: number // for display in HIST view
+}
 
 interface TerminalState {
   // Market data
@@ -24,6 +34,11 @@ interface TerminalState {
   activeCategory: string | null      // category filter for ARB/CMP (e.g. 'Sports')
   selectedIndex: number | null       // index into active result list
   activePanel: 0 | 1 | 2 | 3        // 0=PM, 1=KS, 2=center, 3=detail
+
+  // Center panel — independent view + history
+  centerView: CenterView
+  centerHistory: CenterSnapshot[]
+  centerHistoryIndex: number
 
   // Status / feedback
   loading: boolean
@@ -51,6 +66,10 @@ interface TerminalState {
   setLastCommand: (v: string) => void
   setDefaultLimit: (v: number) => void
   setWsStatus: (v: WsStatus) => void
+  setCenterView: (v: CenterView) => void
+  pushCenterSnapshot: (snap: CenterSnapshot) => void
+  navigateCenterHistory: (delta: -1 | 1) => void
+  jumpToCenterHistory: (index: number) => void
 }
 
 export const useStore = create<TerminalState>((set) => ({
@@ -71,6 +90,9 @@ export const useStore = create<TerminalState>((set) => ({
   lastCommand: '',
   defaultLimit: 200,
   wsStatus: 'connecting',
+  centerView: 'IDLE',
+  centerHistory: [],
+  centerHistoryIndex: -1,
 
   setPmEvents: (pmEvents) => set({ pmEvents }),
   setKsEvents: (ksEvents) => set({ ksEvents }),
@@ -89,4 +111,49 @@ export const useStore = create<TerminalState>((set) => ({
   setLastCommand: (lastCommand) => set({ lastCommand }),
   setDefaultLimit: (defaultLimit) => set({ defaultLimit }),
   setWsStatus: (wsStatus) => set({ wsStatus }),
+  setCenterView: (centerView) => set({ centerView }),
+
+  pushCenterSnapshot: (snap) => set((state) => {
+    // Truncate forward history if we're looking at a past entry
+    const truncated = state.centerHistory.slice(0, state.centerHistoryIndex + 1)
+    const newHistory = [...truncated, snap]
+    const newIndex = newHistory.length - 1
+    return {
+      centerHistory: newHistory,
+      centerHistoryIndex: newIndex,
+      centerView: snap.view,
+      activeView: snap.view as View,
+      arbResults: snap.arbResults,
+      compareResults: snap.compareResults,
+    }
+  }),
+
+  navigateCenterHistory: (delta) => set((state) => {
+    if (state.centerHistory.length === 0) return {}
+    const newIndex = Math.max(0, Math.min(state.centerHistory.length - 1, state.centerHistoryIndex + delta))
+    if (newIndex === state.centerHistoryIndex) return {}
+    const snap = state.centerHistory[newIndex]
+    return {
+      centerHistoryIndex: newIndex,
+      centerView: snap.view,
+      activeView: snap.view as View,
+      arbResults: snap.arbResults,
+      compareResults: snap.compareResults,
+      selectedIndex: null,
+    }
+  }),
+
+  jumpToCenterHistory: (index) => set((state) => {
+    if (state.centerHistory.length === 0) return {}
+    const clamped = Math.max(0, Math.min(state.centerHistory.length - 1, index))
+    const snap = state.centerHistory[clamped]
+    return {
+      centerHistoryIndex: clamped,
+      centerView: snap.view,
+      activeView: snap.view as View,
+      arbResults: snap.arbResults,
+      compareResults: snap.compareResults,
+      selectedIndex: null,
+    }
+  }),
 }))

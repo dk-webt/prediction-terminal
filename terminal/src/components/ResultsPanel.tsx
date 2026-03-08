@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react'
 import { useStore } from '../store'
 import type { ArbitrageResult, CompareResult } from '../types'
+import type { CenterSnapshot } from '../store'
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
@@ -226,11 +227,13 @@ function HelpView() {
     ['KS [N]', 'Fetch N Kalshi events'],
     ['ARB [N] [CAT]', 'Run arbitrage scan; CAT filters by category (e.g. SPORTS)'],
     ['CMP [N] [CAT]', 'Run semantic bracket comparison; CAT filters by category'],
+    ['HIST', 'Show result history (all past ARB/CMP runs)'],
+    ['HIST N', 'Jump to history entry N (e.g. HIST 2)'],
     ['CATS', 'Show available categories for ARB/CMP filtering'],
     ['CACHE', 'Show cache statistics'],
     ['CLEAR', 'Clear the semantic match cache'],
     ['LIMIT N', 'Set default event limit'],
-    ['R', 'Refresh / re-run last command'],
+    ['R', 'Refresh / re-run last command (fetches fresh data)'],
     ['? / HELP', 'Show this reference'],
     ['Q', 'Quit terminal'],
   ]
@@ -239,6 +242,7 @@ function HelpView() {
     ['Esc', 'Unfocus command bar'],
     ['Tab', 'Cycle panels (left → center → right)'],
     ['↑ ↓', 'Navigate rows (when not in command bar)'],
+    ['Alt+← / Alt+→', 'Navigate center panel history (back / forward)'],
   ]
 
   return (
@@ -348,32 +352,80 @@ function CatsView() {
   )
 }
 
+// ── History view ──────────────────────────────────────────────────────────────
+
+function HistView() {
+  const { centerHistory, centerHistoryIndex } = useStore()
+
+  if (centerHistory.length === 0) {
+    return (
+      <div className="progress-bar" style={{ color: 'var(--amber-dim)' }}>
+        No history yet. Run ARB or CMP to build history.
+      </div>
+    )
+  }
+
+  return (
+    <div className="cache-view">
+      <div style={{ color: 'var(--amber-dim)', marginBottom: 10, fontSize: 10, letterSpacing: 1 }}>
+        RESULT HISTORY — type HIST N to jump  •  Alt+← / Alt+→ to step through
+      </div>
+      <table className="cmd-table">
+        <thead>
+          <tr>
+            <td style={{ color: 'var(--amber-dim)', width: 32 }}>#</td>
+            <td style={{ color: 'var(--amber-dim)' }}>COMMAND</td>
+            <td style={{ color: 'var(--amber-dim)' }}>TIME</td>
+            <td style={{ color: 'var(--amber-dim)' }}>RESULTS</td>
+          </tr>
+        </thead>
+        <tbody>
+          {centerHistory.map((snap: CenterSnapshot, i: number) => {
+            const isCurrent = i === centerHistoryIndex
+            const timeStr = new Date(snap.timestamp).toLocaleTimeString('en-US', { hour12: false })
+            const resultLabel = snap.view === 'ARB'
+              ? `${snap.resultCount} arb${snap.resultCount !== 1 ? 's' : ''}`
+              : `${snap.resultCount} pair${snap.resultCount !== 1 ? 's' : ''}`
+            return (
+              <tr key={i} style={{ color: isCurrent ? 'var(--amber-hi)' : 'var(--amber)' }}>
+                <td>{isCurrent ? '▶' : ' '} {i + 1}</td>
+                <td>{snap.label}</td>
+                <td>{timeStr}</td>
+                <td>{resultLabel}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ── Main ResultsPanel ─────────────────────────────────────────────────────────
 
 const VIEW_LABELS: Record<string, string> = {
   IDLE: 'TERMINAL',
-  PM: 'POLYMARKET EVENTS',
-  KS: 'KALSHI EVENTS',
   ARB: 'ARBITRAGE',
   CMP: 'COMPARISON',
   HELP: 'HELP',
   CACHE: 'CACHE',
   CATS: 'CATEGORIES',
+  HIST: 'HISTORY',
 }
 
 export default function ResultsPanel({ focused }: { focused: boolean }) {
-  const { activeView, activeCategory, loading, progressMsg, errorMsg, arbResults, compareResults } = useStore()
+  const { centerView, activeCategory, loading, progressMsg, errorMsg, arbResults, compareResults } = useStore()
 
   const count =
-    activeView === 'ARB'
+    centerView === 'ARB'
       ? arbResults.length
-      : activeView === 'CMP'
+      : centerView === 'CMP'
       ? compareResults.reduce((s, cr) => s + cr.market_matches.length, 0)
       : 0
 
-  const baseLabel = VIEW_LABELS[activeView] ?? activeView
+  const baseLabel = VIEW_LABELS[centerView] ?? centerView
   const panelTitle =
-    activeCategory && (activeView === 'ARB' || activeView === 'CMP')
+    activeCategory && (centerView === 'ARB' || centerView === 'CMP')
       ? `${baseLabel} • ${activeCategory}`
       : baseLabel
 
@@ -396,28 +448,19 @@ export default function ResultsPanel({ focused }: { focused: boolean }) {
           <div className="error-msg">{errorMsg}</div>
         )}
 
-        {!loading && activeView === 'IDLE' && (
+        {!loading && centerView === 'IDLE' && (
           <div className="idle-state">
             <div className="idle-logo">PMT</div>
-            <div className="idle-hint">Type ? for commands or PM / KS / ARB / CMP to start</div>
+            <div className="idle-hint">Type ? for commands or ARB / CMP to start</div>
           </div>
         )}
 
-        {!loading && activeView === 'ARB' && <ArbTable />}
-        {!loading && activeView === 'CMP' && <CmpTable />}
-        {!loading && activeView === 'HELP' && <HelpView />}
-        {!loading && activeView === 'CACHE' && <CacheView />}
-        {!loading && activeView === 'CATS' && <CatsView />}
-
-        {!loading && (activeView === 'PM' || activeView === 'KS') && (
-          <div className="idle-state">
-            <div className="idle-hint" style={{ textAlign: 'center' }}>
-              {activeView} events shown in left panel.
-              <br />
-              Select a row to see details.
-            </div>
-          </div>
-        )}
+        {!loading && centerView === 'ARB' && <ArbTable />}
+        {!loading && centerView === 'CMP' && <CmpTable />}
+        {!loading && centerView === 'HELP' && <HelpView />}
+        {!loading && centerView === 'CACHE' && <CacheView />}
+        {!loading && centerView === 'CATS' && <CatsView />}
+        {!loading && centerView === 'HIST' && <HistView />}
       </div>
     </div>
   )
