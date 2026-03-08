@@ -72,13 +72,14 @@ Progress = Callable[[str], None]
 
 
 def _run_arb(limit: int, progress: Progress, **kwargs) -> dict:
+    category = kwargs.pop("category", None)
     progress("Fetching Polymarket events…")
     from clients.polymarket import fetch_events as pm_fetch
-    pm_events = pm_fetch(limit=limit)
+    pm_events = pm_fetch(limit=limit, category=category)
 
     progress(f"Got {len(pm_events)} PM events. Fetching Kalshi…")
     from clients.kalshi import fetch_events as ks_fetch
-    ks_events = ks_fetch(limit=limit)
+    ks_events = ks_fetch(limit=limit, category=category)
 
     progress(f"Got {len(ks_events)} KS events. Running semantic matching…")
     from comparator import find_market_matches, find_arbitrage
@@ -100,13 +101,14 @@ def _run_arb(limit: int, progress: Progress, **kwargs) -> dict:
 
 
 def _run_compare(limit: int, progress: Progress, **kwargs) -> dict:
+    category = kwargs.pop("category", None)
     progress("Fetching Polymarket events…")
     from clients.polymarket import fetch_events as pm_fetch
-    pm_events = pm_fetch(limit=limit)
+    pm_events = pm_fetch(limit=limit, category=category)
 
     progress(f"Got {len(pm_events)} PM events. Fetching Kalshi…")
     from clients.kalshi import fetch_events as ks_fetch
-    ks_events = ks_fetch(limit=limit)
+    ks_events = ks_fetch(limit=limit, category=category)
 
     progress(f"Got {len(ks_events)} KS events. Running semantic matching…")
     from comparator import find_market_matches
@@ -228,6 +230,24 @@ async def get_kalshi_events(limit: int = 200):
         raise HTTPException(status_code=502, detail=str(exc))
 
 
+@app.get("/categories")
+async def get_categories():
+    """Return unique normalized categories available on each platform."""
+    def fetch():
+        from clients.polymarket import fetch_events as pm_fetch
+        from clients.kalshi import fetch_events as ks_fetch
+        from comparator import normalize_category
+        pm_events = pm_fetch(limit=200)
+        ks_events = ks_fetch(limit=200)
+        pm_cats = sorted({normalize_category(e.category) for e in pm_events if e.category})
+        ks_cats = sorted({normalize_category(e.category) for e in ks_events if e.category})
+        return {"polymarket": pm_cats, "kalshi": ks_cats}
+    try:
+        return await asyncio.to_thread(fetch)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @app.get("/cache/stats")
 async def get_cache_stats():
     from cache import cache_stats
@@ -252,10 +272,13 @@ async def websocket_status(websocket: WebSocket):
             cmd = data.get("type", "")
             limit = int(data.get("limit", 200))
 
+            category = data.get("category") or None  # None when absent or ""
+
             if cmd == "arb":
                 await _stream_ws(
                     websocket, _run_arb, limit,
                     transform_done=_transform_arb_done,
+                    category=category,
                     event_min_score=float(data.get("event_min_score", 0.75)),
                     market_min_score=float(data.get("market_min_score", 0.82)),
                     min_profit=float(data.get("min_profit", 0.0)),
@@ -266,6 +289,7 @@ async def websocket_status(websocket: WebSocket):
                 await _stream_ws(
                     websocket, _run_compare, limit,
                     transform_done=_transform_cmp_done,
+                    category=category,
                     event_min_score=float(data.get("event_min_score", 0.75)),
                     market_min_score=float(data.get("market_min_score", 0.82)),
                     refresh_cache=bool(data.get("refresh_cache", False)),

@@ -16,7 +16,7 @@ export default function App() {
   const {
     setLoading, setProgressMsg, setErrorMsg,
     setPmEvents, setKsEvents, setArbResults, setCompareResults,
-    setCacheStats, setActiveView, setLastCommand, setWsStatus,
+    setCacheStats, setCategories, setActiveView, setActiveCategory, setLastCommand, setWsStatus,
     setCacheStatsBar, setSelectedIndex, setActivePanel, setDefaultLimit,
     activePanel, defaultLimit,
   } = useStore()
@@ -109,6 +109,11 @@ export default function App() {
       const cmd = parts[0]
       const numArg = parts[1] ? parseInt(parts[1], 10) : NaN
       const limit = !isNaN(numArg) ? numArg : useStore.getState().defaultLimit
+      // Optional category token: ARB 200 SPORTS or ARB SPORTS (if parts[1] is not a number)
+      const categoryArg = !isNaN(numArg) ? parts[2] : parts[1]
+      const category = categoryArg && /^[A-Z]/.test(categoryArg) && isNaN(parseInt(categoryArg, 10))
+        ? categoryArg
+        : undefined
 
       useStore.getState().setErrorMsg('')
 
@@ -167,9 +172,10 @@ export default function App() {
           pendingCmdRef.current = 'ARB'
           setLoading(true)
           setActiveView('ARB')
+          setActiveCategory(category ?? null)
           setProgressMsg('Starting arbitrage scan…')
           setSelectedIndex(null)
-          wsRef.current.send(JSON.stringify({ type: 'arb', limit }))
+          wsRef.current.send(JSON.stringify({ type: 'arb', limit, category: category ?? null }))
           break
         }
 
@@ -181,9 +187,10 @@ export default function App() {
           pendingCmdRef.current = 'CMP'
           setLoading(true)
           setActiveView('CMP')
+          setActiveCategory(category ?? null)
           setProgressMsg('Starting comparison…')
           setSelectedIndex(null)
-          wsRef.current.send(JSON.stringify({ type: 'compare', limit }))
+          wsRef.current.send(JSON.stringify({ type: 'compare', limit, category: category ?? null }))
           break
         }
 
@@ -214,6 +221,24 @@ export default function App() {
             setProgressMsg(`Default limit set to ${numArg}`)
             setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
           }
+          break
+        }
+
+        case 'CATS': {
+          setActiveView('CATS')
+          setLoading(true)
+          setProgressMsg('Fetching categories from both platforms…')
+          fetch(`${API}/categories`)
+            .then((r) => r.json())
+            .then((data) => {
+              setCategories(data)
+              setLoading(false)
+              setProgressMsg('')
+            })
+            .catch((e) => {
+              setLoading(false)
+              setErrorMsg(String(e))
+            })
           break
         }
 

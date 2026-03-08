@@ -128,11 +128,17 @@ def _get_headers() -> dict:
 
 
 def fetch_events(limit: int = 100, status: str = "open", category: str | None = None) -> list[NormalizedEvent]:
+    from comparator import normalize_category as _norm_cat
+
     events: list[NormalizedEvent] = []
     cursor: str | None = None
-    page_size = min(limit, 200)
+    # When filtering by category we may need to over-fetch since Kalshi has no
+    # general category param (only series_ticker, which is a specific series ID).
+    # Fetch up to 3× the limit to have enough events after filtering.
+    fetch_limit = limit * 3 if category else limit
+    page_size = min(fetch_limit, 200)
 
-    while len(events) < limit:
+    while len(events) < fetch_limit:
         params: dict = {
             "limit": page_size,
             "with_nested_markets": "true",
@@ -140,8 +146,6 @@ def fetch_events(limit: int = 100, status: str = "open", category: str | None = 
         }
         if cursor:
             params["cursor"] = cursor
-        if category:
-            params["series_ticker"] = category
 
         try:
             resp = requests.get(
@@ -172,11 +176,15 @@ def fetch_events(limit: int = 100, status: str = "open", category: str | None = 
 
         for e in page:
             events.append(_normalize_event(e))
-            if len(events) >= limit:
+            if len(events) >= fetch_limit:
                 break
 
         cursor = body.get("cursor")
         if not cursor or len(page) < page_size:
             break
 
-    return events
+    if category:
+        target = _norm_cat(category)
+        events = [e for e in events if _norm_cat(e.category) == target]
+
+    return events[:limit]

@@ -224,8 +224,9 @@ function HelpView() {
   const CMDS = [
     ['PM [N]', 'Fetch N Polymarket events (default: LIMIT)'],
     ['KS [N]', 'Fetch N Kalshi events'],
-    ['ARB [N]', 'Run arbitrage scan across N events per platform'],
-    ['CMP [N]', 'Run semantic bracket comparison'],
+    ['ARB [N] [CAT]', 'Run arbitrage scan; CAT filters by category (e.g. SPORTS)'],
+    ['CMP [N] [CAT]', 'Run semantic bracket comparison; CAT filters by category'],
+    ['CATS', 'Show available categories for ARB/CMP filtering'],
     ['CACHE', 'Show cache statistics'],
     ['CLEAR', 'Clear the semantic match cache'],
     ['LIMIT N', 'Set default event limit'],
@@ -300,6 +301,53 @@ function CacheView() {
   )
 }
 
+// ── Categories view ───────────────────────────────────────────────────────────
+
+function CatsView() {
+  const { categories } = useStore()
+  if (!categories) {
+    return (
+      <div className="progress-bar" style={{ color: 'var(--amber-dim)' }}>
+        Loading categories…
+      </div>
+    )
+  }
+
+  const allCats = Array.from(
+    new Set([...categories.polymarket, ...categories.kalshi])
+  ).sort()
+
+  return (
+    <div className="cache-view">
+      <div style={{ color: 'var(--amber-dim)', marginBottom: 10, fontSize: 10, letterSpacing: 1 }}>
+        AVAILABLE CATEGORIES — use with ARB or CMP e.g. ARB 200 SPORTS
+      </div>
+      <table className="cmd-table">
+        <thead>
+          <tr>
+            <td style={{ color: 'var(--amber-dim)' }}>CATEGORY</td>
+            <td style={{ color: 'var(--amber-dim)' }}>PM</td>
+            <td style={{ color: 'var(--amber-dim)' }}>KS</td>
+          </tr>
+        </thead>
+        <tbody>
+          {allCats.map((cat) => (
+            <tr key={cat}>
+              <td>{cat.toUpperCase()}</td>
+              <td style={{ color: categories.polymarket.includes(cat) ? 'var(--green)' : 'var(--amber-dim)' }}>
+                {categories.polymarket.includes(cat) ? '●' : '○'}
+              </td>
+              <td style={{ color: categories.kalshi.includes(cat) ? 'var(--green)' : 'var(--amber-dim)' }}>
+                {categories.kalshi.includes(cat) ? '●' : '○'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ── Main ResultsPanel ─────────────────────────────────────────────────────────
 
 const VIEW_LABELS: Record<string, string> = {
@@ -310,10 +358,11 @@ const VIEW_LABELS: Record<string, string> = {
   CMP: 'COMPARISON',
   HELP: 'HELP',
   CACHE: 'CACHE',
+  CATS: 'CATEGORIES',
 }
 
 export default function ResultsPanel({ focused }: { focused: boolean }) {
-  const { activeView, loading, progressMsg, errorMsg, arbResults, compareResults } = useStore()
+  const { activeView, activeCategory, loading, progressMsg, errorMsg, arbResults, compareResults } = useStore()
 
   const count =
     activeView === 'ARB'
@@ -322,10 +371,16 @@ export default function ResultsPanel({ focused }: { focused: boolean }) {
       ? compareResults.reduce((s, cr) => s + cr.market_matches.length, 0)
       : 0
 
+  const baseLabel = VIEW_LABELS[activeView] ?? activeView
+  const panelTitle =
+    activeCategory && (activeView === 'ARB' || activeView === 'CMP')
+      ? `${baseLabel} • ${activeCategory}`
+      : baseLabel
+
   return (
     <div className={`panel results-panel${focused ? ' focused' : ''}`}>
       <div className="panel-header">
-        <span className="panel-title">{VIEW_LABELS[activeView] ?? activeView}</span>
+        <span className="panel-title">{panelTitle}</span>
         {count > 0 && <span className="panel-count">{count}</span>}
       </div>
 
@@ -352,6 +407,7 @@ export default function ResultsPanel({ focused }: { focused: boolean }) {
         {!loading && activeView === 'CMP' && <CmpTable />}
         {!loading && activeView === 'HELP' && <HelpView />}
         {!loading && activeView === 'CACHE' && <CacheView />}
+        {!loading && activeView === 'CATS' && <CatsView />}
 
         {!loading && (activeView === 'PM' || activeView === 'KS') && (
           <div className="idle-state">

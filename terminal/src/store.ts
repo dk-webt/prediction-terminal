@@ -6,7 +6,7 @@ import type {
   CacheStats,
 } from './types'
 
-export type View = 'IDLE' | 'PM' | 'KS' | 'ARB' | 'CMP' | 'HELP' | 'CACHE'
+export type View = 'IDLE' | 'PM' | 'KS' | 'ARB' | 'CMP' | 'HELP' | 'CACHE' | 'CATS'
 export type WsStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 
 interface TerminalState {
@@ -17,9 +17,11 @@ interface TerminalState {
   compareResults: CompareResult[]
   cacheStats: CacheStats | null
   cacheStatsBar: CacheStats | null   // polled for status bar
+  categories: { polymarket: string[]; kalshi: string[] } | null
 
   // UI state
   activeView: View
+  activeCategory: string | null      // category filter for ARB/CMP (e.g. 'Sports')
   selectedIndex: number | null       // index into active result list
   activePanel: 0 | 1 | 2 | 3        // 0=PM, 1=KS, 2=center, 3=detail
 
@@ -38,7 +40,9 @@ interface TerminalState {
   setCompareResults: (v: CompareResult[]) => void
   setCacheStats: (v: CacheStats | null) => void
   setCacheStatsBar: (v: CacheStats | null) => void
+  setCategories: (v: { polymarket: string[]; kalshi: string[] } | null) => void
   setActiveView: (v: View) => void
+  setActiveCategory: (v: string | null) => void
   setSelectedIndex: (v: number | null) => void
   setActivePanel: (v: 0 | 1 | 2 | 3) => void
   setLoading: (v: boolean) => void
@@ -56,7 +60,9 @@ export const useStore = create<TerminalState>((set) => ({
   compareResults: [],
   cacheStats: null,
   cacheStatsBar: null,
+  categories: null,
   activeView: 'IDLE',
+  activeCategory: null,
   selectedIndex: null,
   activePanel: 1,
   loading: false,
@@ -72,7 +78,9 @@ export const useStore = create<TerminalState>((set) => ({
   setCompareResults: (compareResults) => set({ compareResults }),
   setCacheStats: (cacheStats) => set({ cacheStats }),
   setCacheStatsBar: (cacheStatsBar) => set({ cacheStatsBar }),
+  setCategories: (categories) => set({ categories }),
   setActiveView: (activeView) => set({ activeView }),
+  setActiveCategory: (activeCategory) => set({ activeCategory }),
   setSelectedIndex: (selectedIndex) => set({ selectedIndex }),
   setActivePanel: (activePanel) => set({ activePanel }),
   setLoading: (loading) => set({ loading }),
