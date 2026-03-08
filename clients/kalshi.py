@@ -66,8 +66,9 @@ def _get_series_slug(series_ticker: str) -> str:
 
 def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: str = "", event_url: str = "") -> NormalizedMarket:
     # Prices are in cents (0-100); convert to probability (0.0-1.0)
-    yes_price = _safe_float(m.get("last_price", 0)) / 100.0
-    no_price = _safe_float(m.get("no_bid", 0)) / 100.0
+    # Use ask prices: cost to actually buy each side
+    yes_price = _safe_float(m.get("yes_ask") or m.get("last_price", 0)) / 100.0
+    no_price = _safe_float(m.get("no_ask") or m.get("no_bid", 0)) / 100.0
     if no_price == 0.0 and yes_price > 0.0:
         no_price = round(1.0 - yes_price, 4)
 

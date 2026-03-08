@@ -14,7 +14,7 @@ def _safe_float(val, default=0.0) -> float:
 
 
 def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: str = "", parent_event_url: str = "") -> NormalizedMarket:
-    # outcomePrices is a JSON-encoded string, e.g. '["0.65", "0.35"]'
+    # outcomePrices is a JSON-encoded string, e.g. '["0.65", "0.35"]' (mid prices)
     raw_prices = m.get("outcomePrices", [])
     if isinstance(raw_prices, str):
         try:
@@ -22,13 +22,18 @@ def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: st
         except (json.JSONDecodeError, ValueError):
             raw_prices = []
 
-    # Prefer lastTradePrice (most current), fall back to outcomePrices[0]
-    last_trade = m.get("lastTradePrice")
-    if last_trade is not None:
-        yes_price = _safe_float(last_trade)
+    # Use ask prices: cost to actually buy each side
+    # bestAsk = ask for Yes; no_ask = 1 - bestBid (buying No costs 1 minus what Yes buyers pay)
+    best_ask = m.get("bestAsk")
+    best_bid = m.get("bestBid")
+    if best_ask is not None:
+        yes_price = _safe_float(best_ask)
     else:
         yes_price = _safe_float(raw_prices[0]) if raw_prices else 0.0
-    no_price = _safe_float(raw_prices[1]) if len(raw_prices) > 1 else round(1.0 - yes_price, 4)
+    if best_bid is not None:
+        no_price = round(1.0 - _safe_float(best_bid), 4)
+    else:
+        no_price = _safe_float(raw_prices[1]) if len(raw_prices) > 1 else round(1.0 - yes_price, 4)
 
     return NormalizedMarket(
         question=m.get("question", ""),
