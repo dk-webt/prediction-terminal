@@ -1,8 +1,6 @@
-import re
 from datetime import date as _date
-import numpy as np
-from rapidfuzz import fuzz
 from models import NormalizedEvent, NormalizedMarket, MatchResult, MarketMatchResult, ArbitrageResult
+from matchers import EventMatcher, default_matcher
 
 # Map common category name variants to a canonical label
 CATEGORY_ALIASES: dict[str, str] = {
@@ -36,11 +34,6 @@ CATEGORY_ALIASES: dict[str, str] = {
 }
 
 
-def _clean(text: str) -> str:
-    """Lowercase and strip punctuation for fuzzy matching."""
-    return re.sub(r"[^a-z0-9 ]", " ", text.lower()).strip()
-
-
 def _days_apart(date1: str, date2: str) -> int | None:
     """Absolute day difference between two ISO date strings, or None if either is missing/unparseable."""
     if not date1 or not date2:
@@ -71,128 +64,18 @@ def normalize_category(raw: str) -> str:
     return CATEGORY_ALIASES.get(key, raw.title() if raw else "Other")
 
 
-# ── Shared greedy best-first assignment ──────────────────────────────────────
-
-
-def _greedy_match_events(
-    poly_events: list[NormalizedEvent],
-    kalshi_events: list[NormalizedEvent],
-    sim_matrix: np.ndarray,
-    min_score: float,
-) -> list[MatchResult]:
-    """
-    Scores are stored as-is (cosine: 0.0–1.0, fuzzy: 0–100).
-    min_score must be in the same units as the sim_matrix values.
-    """
-    results: list[MatchResult] = []
-    used_poly: set[int] = set()
-    used_kalshi: set[int] = set()
-
-    pairs = sorted(
-        ((sim_matrix[i, j], i, j)
-         for i in range(len(poly_events))
-         for j in range(len(kalshi_events))),
-        reverse=True,
-    )
-
-    for score, i, j in pairs:
-        if score < min_score:
-            break
-        if i in used_poly or j in used_kalshi:
-            continue
-        results.append(MatchResult(
-            poly_event=poly_events[i],
-            kalshi_event=kalshi_events[j],
-            score=round(float(score), 4),
-        ))
-        used_poly.add(i)
-        used_kalshi.add(j)
-
-    return results
-
-
-def _greedy_match_markets(
-    poly_markets: list[NormalizedMarket],
-    kalshi_markets: list[NormalizedMarket],
-    sim_matrix: np.ndarray,
-    min_score: float,
-) -> list[MarketMatchResult]:
-    """
-    Scores are stored as-is (cosine: 0.0–1.0, fuzzy: 0–100).
-    min_score must be in the same units as the sim_matrix values.
-    """
-    results: list[MarketMatchResult] = []
-    used_poly: set[int] = set()
-    used_kalshi: set[int] = set()
-
-    pairs = sorted(
-        ((sim_matrix[i, j], i, j)
-         for i in range(len(poly_markets))
-         for j in range(len(kalshi_markets))),
-        reverse=True,
-    )
-
-    for score, i, j in pairs:
-        if score < min_score:
-            break
-        if i in used_poly or j in used_kalshi:
-            continue
-        results.append(MarketMatchResult(
-            poly_market=poly_markets[i],
-            kalshi_market=kalshi_markets[j],
-            score=round(float(score), 4),
-        ))
-        used_poly.add(i)
-        used_kalshi.add(j)
-
-    return results
-
-
-# ── Event-level matching ──────────────────────────────────────────────────────
-
-
-def find_matches_semantic(
-    poly_events: list[NormalizedEvent],
-    kalshi_events: list[NormalizedEvent],
-    min_score: float = 0.82,
-) -> list[MatchResult]:
-    from clients.embeddings import embed_texts, cosine_similarity_matrix
-    pv = embed_texts([e.title for e in poly_events])
-    kv = embed_texts([e.title for e in kalshi_events])
-    sim = cosine_similarity_matrix(pv, kv)
-    return _greedy_match_events(poly_events, kalshi_events, sim, min_score)
-
-
-def find_matches_fuzzy(
-    poly_events: list[NormalizedEvent],
-    kalshi_events: list[NormalizedEvent],
-    min_score: float = 65.0,
-) -> list[MatchResult]:
-    poly_cleaned = [_clean(e.title) for e in poly_events]
-    kalshi_cleaned = [_clean(e.title) for e in kalshi_events]
-    n, m = len(poly_events), len(kalshi_events)
-    sim = np.zeros((n, m), dtype=np.float32)
-    for i, p in enumerate(poly_cleaned):
-        for j, k in enumerate(kalshi_cleaned):
-            sim[i, j] = fuzz.token_sort_ratio(p, k)
-    return _greedy_match_events(poly_events, kalshi_events, sim, min_score)
+# ── Convenience shim (used by CLI main.py) ───────────────────────────────────
 
 
 def find_matches(
     poly_events: list[NormalizedEvent],
     kalshi_events: list[NormalizedEvent],
     min_score: float = 0.82,
-    use_embeddings: bool = True,
+    use_embeddings: bool = True,  # ignored — matcher decides; kept for CLI compat
+    matcher: EventMatcher | None = None,
 ) -> list[MatchResult]:
-    from config import GEMINI_API_KEY
-    if use_embeddings and GEMINI_API_KEY:
-        try:
-            return find_matches_semantic(poly_events, kalshi_events, min_score=min_score)
-        except Exception as exc:
-            print(f"[yellow]Embedding failed ({exc}), falling back to fuzzy matching.[/yellow]")
-    # Convert cosine threshold (0-1) to fuzzy scale (0-100) for fallback
-    fuzzy_min = min_score * 100.0 if min_score <= 1.0 else min_score
-    return find_matches_fuzzy(poly_events, kalshi_events, min_score=fuzzy_min)
+    """Event-level match using the default (or supplied) matcher."""
+    return (matcher or default_matcher()).match_events(poly_events, kalshi_events, min_score)
 
 
 # ── Sub-market / bracket level matching (two-level) ──────────────────────────
@@ -203,10 +86,10 @@ def find_market_matches(
     kalshi_events: list[NormalizedEvent],
     event_min_score: float = 0.75,
     market_min_score: float = 0.85,
-    use_embeddings: bool = True,
     use_cache: bool = True,
     refresh_cache: bool = False,
     max_days: int | None = None,
+    matcher: EventMatcher | None = None,
 ) -> list[tuple[MatchResult, list[MarketMatchResult]]]:
     """
     Two-level matching:
@@ -214,25 +97,25 @@ def find_market_matches(
       2. For each matched event pair, match their sub-markets (stricter threshold).
 
     Returns a list of (event_match, [market_matches]) tuples, one per matched
-    event pair.  Pairs where neither side has sub-markets are included with an
+    event pair. Pairs where neither side has sub-markets are included with an
     empty market list so callers can still show the event-level match.
 
-    If max_days is set, events are filtered to those expiring within that many
-    days before any embedding is performed.
+    Args:
+        matcher:   EventMatcher implementation. Defaults to GeminiFuzzyMatcher (V1).
+                   Pass a different instance to swap the matching algorithm entirely.
+        max_days:  Pre-filter events before embedding (loose +365d buffer for Kalshi
+                   settlement date quirk). find_arbitrage enforces the strict cutoff.
     """
+    if matcher is None:
+        matcher = default_matcher()
+
     if max_days is not None:
-        # Pre-filter loosely so we don't discard events whose partner closes
-        # within the window (find_arbitrage enforces the strict min-date cutoff).
-        # Kalshi settlement dates can run months past the actual event, so use
-        # a generous extra buffer of 365 days on the pre-filter.
+        # Pre-filter loosely — Kalshi settlement dates can be 1+ year past the
+        # actual event date, so find_arbitrage's min(pm, ks) is the strict gate.
         poly_events = _filter_events_by_days(poly_events, max_days + 365)
         kalshi_events = _filter_events_by_days(kalshi_events, max_days + 365)
 
-    event_matches = find_matches(
-        poly_events, kalshi_events,
-        min_score=event_min_score,
-        use_embeddings=use_embeddings,
-    )
+    event_matches = matcher.match_events(poly_events, kalshi_events, event_min_score)
 
     results: list[tuple[MatchResult, list[MarketMatchResult]]] = []
 
@@ -259,7 +142,7 @@ def find_market_matches(
                 save_match(em, single_mm)
             continue
 
-        # Check cache before embedding
+        # Check cache before calling the matcher
         if use_cache and not refresh_cache:
             from cache import load_cached_market_matches
             cached = load_cached_market_matches(em.poly_event, em.kalshi_event)
@@ -267,9 +150,7 @@ def find_market_matches(
                 results.append((em, cached))
                 continue
 
-        market_matches = _match_pair_markets(
-            pm_markets, ks_markets, market_min_score, use_embeddings
-        )
+        market_matches = matcher.match_markets(pm_markets, ks_markets, market_min_score)
         results.append((em, market_matches))
 
         if use_cache:
@@ -277,51 +158,6 @@ def find_market_matches(
             save_match(em, market_matches)
 
     return results
-
-
-def _match_pair_markets(
-    poly_markets: list[NormalizedMarket],
-    kalshi_markets: list[NormalizedMarket],
-    min_score: float,
-    use_embeddings: bool,
-) -> list[MarketMatchResult]:
-    """Match sub-markets within a single already-confirmed event pair."""
-    from config import GEMINI_API_KEY
-
-    if use_embeddings and GEMINI_API_KEY:
-        try:
-            return _market_matches_semantic(poly_markets, kalshi_markets, min_score)
-        except Exception as exc:
-            print(f"[yellow]Sub-market embedding failed ({exc}), using fuzzy.[/yellow]")
-
-    fuzzy_min = min_score * 100.0 if min_score <= 1.0 else min_score
-    return _market_matches_fuzzy(poly_markets, kalshi_markets, fuzzy_min)
-
-
-def _market_matches_semantic(
-    poly_markets: list[NormalizedMarket],
-    kalshi_markets: list[NormalizedMarket],
-    min_score: float,
-) -> list[MarketMatchResult]:
-    from clients.embeddings import embed_texts, cosine_similarity_matrix
-    pv = embed_texts([m.question for m in poly_markets])
-    kv = embed_texts([m.question for m in kalshi_markets])
-    sim = cosine_similarity_matrix(pv, kv)
-    return _greedy_match_markets(poly_markets, kalshi_markets, sim, min_score)
-
-
-def _market_matches_fuzzy(
-    poly_markets: list[NormalizedMarket],
-    kalshi_markets: list[NormalizedMarket],
-    min_score: float,
-) -> list[MarketMatchResult]:
-    n, m = len(poly_markets), len(kalshi_markets)
-    sim = np.zeros((n, m), dtype=np.float32)
-    for i, pm in enumerate(poly_markets):
-        pc = _clean(pm.question)
-        for j, km in enumerate(kalshi_markets):
-            sim[i, j] = fuzz.token_sort_ratio(pc, _clean(km.question))
-    return _greedy_match_markets(poly_markets, kalshi_markets, sim, min_score)
 
 
 # ── Arbitrage detection ───────────────────────────────────────────────────────
