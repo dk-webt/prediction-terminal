@@ -64,20 +64,6 @@ def normalize_category(raw: str) -> str:
     return CATEGORY_ALIASES.get(key, raw.title() if raw else "Other")
 
 
-# ── Convenience shim (used by CLI main.py) ───────────────────────────────────
-
-
-def find_matches(
-    poly_events: list[NormalizedEvent],
-    kalshi_events: list[NormalizedEvent],
-    min_score: float = 0.82,
-    use_embeddings: bool = True,  # ignored — matcher decides; kept for CLI compat
-    matcher: EventMatcher | None = None,
-) -> list[MatchResult]:
-    """Event-level match using the default (or supplied) matcher."""
-    return (matcher or default_matcher()).match_events(poly_events, kalshi_events, min_score)
-
-
 # ── Sub-market / bracket level matching (two-level) ──────────────────────────
 
 

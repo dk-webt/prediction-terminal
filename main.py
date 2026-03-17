@@ -21,7 +21,8 @@ from rich.text import Text
 from rich.panel import Panel
 from rich.rule import Rule
 
-from comparator import find_matches, find_market_matches, find_arbitrage, group_by_category, normalize_category
+from comparator import find_market_matches, find_arbitrage, group_by_category, normalize_category
+from matchers import default_matcher
 from models import NormalizedEvent, NormalizedMarket, MatchResult, MarketMatchResult, ArbitrageResult
 
 console = Console()
@@ -212,9 +213,8 @@ def _run_event_compare(
     min_score: float,
     use_embeddings: bool,
 ) -> None:
-    mode = "semantic embeddings" if use_embeddings else "fuzzy matching"
-    console.print(f"\n[bold]Comparing events[/bold] via [cyan]{mode}[/cyan] (min score: {min_score})…\n")
-    matches = find_matches(poly_events, kalshi_events, min_score=min_score, use_embeddings=use_embeddings)
+    console.print(f"\n[bold]Comparing events[/bold] (min score: {min_score})…\n")
+    matches = default_matcher().match_events(poly_events, kalshi_events, min_score)
 
     if not matches:
         console.print(f"[yellow]No matching events found at score ≥ {min_score}.[/yellow]")
