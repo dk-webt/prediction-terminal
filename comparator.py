@@ -232,8 +232,14 @@ def find_market_matches(
     days before any embedding is performed.
     """
     if max_days is not None:
-        poly_events = _filter_events_by_days(poly_events, max_days)
-        kalshi_events = _filter_events_by_days(kalshi_events, max_days)
+        # Use a loose cutoff (max_days + date buffer) so we don't drop events
+        # that are slightly over the limit on one platform but whose matched
+        # partner brings days_to_resolution = min(pm, ks) within the window.
+        # find_arbitrage applies the strict max_days filter on the cross-platform
+        # minimum, so no out-of-window results will reach the final output.
+        loose_cutoff = max_days + _DATE_BUFFER_DAYS
+        poly_events = _filter_events_by_days(poly_events, loose_cutoff)
+        kalshi_events = _filter_events_by_days(kalshi_events, loose_cutoff)
 
     event_matches = find_matches(
         poly_events, kalshi_events,
