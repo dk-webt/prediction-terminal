@@ -103,9 +103,8 @@ def _normalize_event(e: dict) -> NormalizedEvent:
 
     total_volume = sum(m.volume for m in markets)
 
-    end_date = ""
-    if e.get("markets"):
-        end_date = (e["markets"][0].get("close_time") or "")[:10]
+    dates = [m.close_time for m in markets if m.close_time]
+    end_date = min(dates) if dates else ""
 
     return NormalizedEvent(
         source="kalshi",
