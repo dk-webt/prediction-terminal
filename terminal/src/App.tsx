@@ -125,13 +125,18 @@ export default function App() {
 
       const parts = trimmed.toUpperCase().split(/\s+/)
       const cmd = parts[0]
-      const numArg = parts[1] ? parseInt(parts[1], 10) : NaN
-      const limit = !isNaN(numArg) ? numArg : useStore.getState().defaultLimit
-      // Optional category token: ARB 200 SPORTS or ARB SPORTS (if parts[1] is not a number)
-      const categoryArg = !isNaN(numArg) ? parts[2] : parts[1]
-      const category = categoryArg && /^[A-Z]/.test(categoryArg) && isNaN(parseInt(categoryArg, 10))
-        ? categoryArg
-        : undefined
+      // Parse limit and category from remaining tokens in any order
+      // e.g. "PM SPORTS 10", "PM 10 SPORTS", "ARB 200", "ARB SPORTS"
+      let limit = useStore.getState().defaultLimit
+      let category: string | undefined = undefined
+      let maxDays: number | undefined = undefined
+      for (const part of parts.slice(1)) {
+        const dMatch = part.match(/^(\d+)D$/)
+        if (dMatch) { maxDays = parseInt(dMatch[1], 10); continue }
+        const n = parseInt(part, 10)
+        if (!isNaN(n) && n > 0) limit = n
+        else if (/^[A-Z]/.test(part)) category = part
+      }
 
       useStore.getState().setErrorMsg('')
 
@@ -146,9 +151,10 @@ export default function App() {
       switch (cmd) {
         case 'PM': {
           setLoading(true)
-          setProgressMsg(`Fetching ${limit} Polymarket events…`)
+          setProgressMsg(`Fetching ${limit} Polymarket events${category ? ` [${category}]` : ''}${maxDays ? ` ≤${maxDays}d` : ''}…`)
           setSelectedIndex(null)
-          fetch(`${API}/events/polymarket?limit=${limit}`)
+          const pmUrl = `${API}/events/polymarket?limit=${limit}${category ? `&category=${category}` : ''}${maxDays ? `&max_days=${maxDays}` : ''}`
+          fetch(pmUrl)
             .then((r) => r.json())
             .then((data) => {
               setPmEvents(data)
@@ -164,9 +170,10 @@ export default function App() {
 
         case 'KS': {
           setLoading(true)
-          setProgressMsg(`Fetching ${limit} Kalshi events…`)
+          setProgressMsg(`Fetching ${limit} Kalshi events${category ? ` [${category}]` : ''}${maxDays ? ` ≤${maxDays}d` : ''}…`)
           setSelectedIndex(null)
-          fetch(`${API}/events/kalshi?limit=${limit}`)
+          const ksUrl = `${API}/events/kalshi?limit=${limit}${category ? `&category=${category}` : ''}${maxDays ? `&max_days=${maxDays}` : ''}`
+          fetch(ksUrl)
             .then((r) => r.json())
             .then((data) => {
               setKsEvents(data)
@@ -192,7 +199,7 @@ export default function App() {
           setActiveCategory(category ?? null)
           setProgressMsg('Starting arbitrage scan…')
           setSelectedIndex(null)
-          wsRef.current.send(JSON.stringify({ type: 'arb', limit, category: category ?? null }))
+          wsRef.current.send(JSON.stringify({ type: 'arb', limit, category: category ?? null, max_days: maxDays ?? null }))
           break
         }
 
@@ -208,7 +215,7 @@ export default function App() {
           setActiveCategory(category ?? null)
           setProgressMsg('Starting comparison…')
           setSelectedIndex(null)
-          wsRef.current.send(JSON.stringify({ type: 'compare', limit, category: category ?? null }))
+          wsRef.current.send(JSON.stringify({ type: 'compare', limit, category: category ?? null, max_days: maxDays ?? null }))
           break
         }
 

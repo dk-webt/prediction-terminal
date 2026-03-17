@@ -66,6 +66,30 @@ def _serialize_compare(pairs: list) -> list:
     ]
 
 
+# ── Date filter helper ─────────────────────────────────────────────────────────
+
+
+from datetime import date as _date
+
+
+def _filter_by_days(events: list, max_days: int | None) -> list:
+    """Filter NormalizedEvent list to those expiring within max_days from today."""
+    if max_days is None:
+        return events
+    today = _date.today()
+    result = []
+    for e in events:
+        if not e.end_date:
+            continue
+        try:
+            end = _date.fromisoformat(e.end_date[:10])
+            if (end - today).days <= max_days:
+                result.append(e)
+        except ValueError:
+            pass
+    return result
+
+
 # ── Sync runners (executed in thread pool) ────────────────────────────────────
 
 Progress = Callable[[str], None]
@@ -102,6 +126,7 @@ def _run_arb(limit: int, progress: Progress, **kwargs) -> dict:
 
 def _run_compare(limit: int, progress: Progress, **kwargs) -> dict:
     category = kwargs.pop("category", None)
+    max_days = kwargs.get("max_days")
     progress("Fetching Polymarket events…")
     from clients.polymarket import fetch_events as pm_fetch
     pm_events = pm_fetch(limit=limit, category=category)
@@ -109,6 +134,9 @@ def _run_compare(limit: int, progress: Progress, **kwargs) -> dict:
     progress(f"Got {len(pm_events)} PM events. Fetching Kalshi…")
     from clients.kalshi import fetch_events as ks_fetch
     ks_events = ks_fetch(limit=limit, category=category)
+
+    pm_events = _filter_by_days(pm_events, max_days)
+    ks_events = _filter_by_days(ks_events, max_days)
 
     progress(f"Got {len(ks_events)} KS events. Running semantic matching…")
     from comparator import find_market_matches
@@ -207,10 +235,11 @@ async def health():
 
 
 @app.get("/events/polymarket")
-async def get_polymarket_events(limit: int = 200):
+async def get_polymarket_events(limit: int = 200, category: str | None = None, max_days: int | None = None):
     def fetch():
         from clients.polymarket import fetch_events
-        return fetch_events(limit=limit)
+        events = fetch_events(limit=limit, category=category)
+        return _filter_by_days(events, max_days)
     try:
         events = await asyncio.to_thread(fetch)
         return _serialize(events)
@@ -219,10 +248,11 @@ async def get_polymarket_events(limit: int = 200):
 
 
 @app.get("/events/kalshi")
-async def get_kalshi_events(limit: int = 200):
+async def get_kalshi_events(limit: int = 200, category: str | None = None, max_days: int | None = None):
     def fetch():
         from clients.kalshi import fetch_events
-        return fetch_events(limit=limit)
+        events = fetch_events(limit=limit, category=category)
+        return _filter_by_days(events, max_days)
     try:
         events = await asyncio.to_thread(fetch)
         return _serialize(events)
@@ -292,6 +322,7 @@ async def websocket_status(websocket: WebSocket):
                     category=category,
                     event_min_score=float(data.get("event_min_score", 0.75)),
                     market_min_score=float(data.get("market_min_score", 0.82)),
+                    max_days=data.get("max_days"),
                     refresh_cache=bool(data.get("refresh_cache", False)),
                 )
             else:

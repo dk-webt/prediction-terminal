@@ -6,10 +6,10 @@ interface Props {
 }
 
 const HINTS = [
-  ['PM [N]', 'Polymarket'],
-  ['KS [N]', 'Kalshi'],
-  ['ARB [N]', 'Arbitrage'],
-  ['CMP [N]', 'Compare'],
+  ['PM [N] [ND]', 'Polymarket'],
+  ['KS [N] [ND]', 'Kalshi'],
+  ['ARB [N] [CAT] [ND]', 'Arbitrage'],
+  ['CMP [N] [CAT] [ND]', 'Compare'],
   ['CACHE', 'Stats'],
   ['CLEAR', 'Reset cache'],
   ['R', 'Refresh'],

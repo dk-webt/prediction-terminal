@@ -223,10 +223,10 @@ function CmpTable() {
 
 function HelpView() {
   const CMDS = [
-    ['PM [N]', 'Fetch N Polymarket events (default: LIMIT)'],
-    ['KS [N]', 'Fetch N Kalshi events'],
-    ['ARB [N] [CAT]', 'Run arbitrage scan; CAT filters by category (e.g. SPORTS)'],
-    ['CMP [N] [CAT]', 'Run semantic bracket comparison; CAT filters by category'],
+    ['PM [N] [ND]', 'Fetch N Polymarket events; ND = max days to expiry (e.g. 30D)'],
+    ['KS [N] [ND]', 'Fetch N Kalshi events; ND = max days to expiry'],
+    ['ARB [N] [CAT] [ND]', 'Run arbitrage scan; CAT filters by category (e.g. SPORTS); ND = max days'],
+    ['CMP [N] [CAT] [ND]', 'Run semantic bracket comparison; tokens in any order'],
     ['HIST', 'Show result history (all past ARB/CMP runs)'],
     ['HIST N', 'Jump to history entry N (e.g. HIST 2)'],
     ['CATS', 'Show available categories for ARB/CMP filtering'],
