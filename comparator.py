@@ -41,12 +41,40 @@ def _clean(text: str) -> str:
     return re.sub(r"[^a-z0-9 ]", " ", text.lower()).strip()
 
 
+def _days_apart(date1: str, date2: str) -> int | None:
+    """Absolute day difference between two ISO date strings, or None if either is missing/unparseable."""
+    if not date1 or not date2:
+        return None
+    try:
+        return abs((_date.fromisoformat(date1[:10]) - _date.fromisoformat(date2[:10])).days)
+    except ValueError:
+        return None
+
+
+def _filter_events_by_days(events: list[NormalizedEvent], max_days: int) -> list[NormalizedEvent]:
+    """Drop events whose end_date is more than max_days away (or has no date)."""
+    today = _date.today()
+    result = []
+    for e in events:
+        if not e.end_date:
+            continue
+        try:
+            if (_date.fromisoformat(e.end_date[:10]) - today).days <= max_days:
+                result.append(e)
+        except ValueError:
+            pass
+    return result
+
+
 def normalize_category(raw: str) -> str:
     key = raw.strip().lower()
     return CATEGORY_ALIASES.get(key, raw.title() if raw else "Other")
 
 
 # ── Shared greedy best-first assignment ──────────────────────────────────────
+
+
+_DATE_BUFFER_DAYS = 5  # max allowable end_date gap between matched events
 
 
 def _greedy_match_events(
@@ -58,6 +86,11 @@ def _greedy_match_events(
     """
     Scores are stored as-is (cosine: 0.0–1.0, fuzzy: 0–100).
     min_score must be in the same units as the sim_matrix values.
+
+    In addition to the semantic score threshold, candidate pairs are
+    rejected if both events have an end_date and those dates are more
+    than _DATE_BUFFER_DAYS apart — a semantically equivalent event on
+    two platforms must resolve around the same time.
     """
     results: list[MatchResult] = []
     used_poly: set[int] = set()
@@ -74,6 +107,9 @@ def _greedy_match_events(
         if score < min_score:
             break
         if i in used_poly or j in used_kalshi:
+            continue
+        diff = _days_apart(poly_events[i].end_date, kalshi_events[j].end_date)
+        if diff is not None and diff > _DATE_BUFFER_DAYS:
             continue
         results.append(MatchResult(
             poly_event=poly_events[i],
@@ -181,6 +217,7 @@ def find_market_matches(
     use_embeddings: bool = True,
     use_cache: bool = True,
     refresh_cache: bool = False,
+    max_days: int | None = None,
 ) -> list[tuple[MatchResult, list[MarketMatchResult]]]:
     """
     Two-level matching:
@@ -190,7 +227,14 @@ def find_market_matches(
     Returns a list of (event_match, [market_matches]) tuples, one per matched
     event pair.  Pairs where neither side has sub-markets are included with an
     empty market list so callers can still show the event-level match.
+
+    If max_days is set, events are filtered to those expiring within that many
+    days before any embedding is performed.
     """
+    if max_days is not None:
+        poly_events = _filter_events_by_days(poly_events, max_days)
+        kalshi_events = _filter_events_by_days(kalshi_events, max_days)
+
     event_matches = find_matches(
         poly_events, kalshi_events,
         min_score=event_min_score,

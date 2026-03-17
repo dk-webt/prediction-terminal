@@ -112,6 +112,7 @@ def _run_arb(limit: int, progress: Progress, **kwargs) -> dict:
         event_min_score=kwargs.get("event_min_score", 0.75),
         market_min_score=kwargs.get("market_min_score", 0.82),
         refresh_cache=kwargs.get("refresh_cache", False),
+        max_days=kwargs.get("max_days"),
     )
     n_brackets = sum(len(m) for _, m in pairs)
     progress(f"Matched {len(pairs)} event pairs, {n_brackets} brackets. Computing arbitrage…")
@@ -145,6 +146,7 @@ def _run_compare(limit: int, progress: Progress, **kwargs) -> dict:
         event_min_score=kwargs.get("event_min_score", 0.75),
         market_min_score=kwargs.get("market_min_score", 0.82),
         refresh_cache=kwargs.get("refresh_cache", False),
+        max_days=max_days,
     )
     n_brackets = sum(len(m) for _, m in pairs)
     progress(f"Matched {len(pairs)} event pairs, {n_brackets} brackets.")
