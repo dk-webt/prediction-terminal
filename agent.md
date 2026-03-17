@@ -30,7 +30,7 @@ C++ Engine              ← sub-ms order execution, CLOB, signing (Phase 3)
 ```
 main.py           CLI entry — Rich tables, argparse; commands: list, compare, arb, cache
 api_server.py     FastAPI :8081 — REST endpoints + WebSocket streaming for ARB/CMP
-comparator.py     Core logic — two-level semantic matching + arbitrage detection
+comparator.py     Orchestration only — find_market_matches, find_arbitrage, date filtering
 cache.py          SQLite cache at .cache/market_matches.db — caches embedding scores
 models.py         Dataclasses: NormalizedEvent, NormalizedMarket, MatchResult,
                   MarketMatchResult, ArbitrageResult
@@ -39,6 +39,10 @@ clients/
   polymarket.py   Polymarket REST client (gamma-api.polymarket.com)
   kalshi.py       Kalshi REST client (api.elections.kalshi.com)
   embeddings.py   Gemini embedding-001 client with rate limiting + batching
+matchers/
+  protocol.py     EventMatcher Protocol — match_events() + match_markets(), scores in [0,1]
+  v1.py           GeminiFuzzyMatcher — Gemini embeddings + rapidfuzz fallback, greedy assign
+  __init__.py     Exports + default_matcher() factory
 ```
 
 ### Electron Terminal (`terminal/`)
@@ -82,12 +86,22 @@ src/styles/bloomberg.css  Amber-on-black theme
 
 ## Key Algorithms
 
-### Two-Level Semantic Matching (`comparator.py:find_market_matches`)
+### Matcher Protocol (`matchers/`)
+Matching is pluggable via the `EventMatcher` protocol (`matchers/protocol.py`). Any class implementing `match_events()` and `match_markets()` can be passed to `find_market_matches(matcher=...)`. Scores must always be in [0, 1].
+
+**V1 — `GeminiFuzzyMatcher`** (`matchers/v1.py`):
+- Primary: Gemini `gemini-embedding-001` cosine similarity
+- Fallback: `rapidfuzz.token_sort_ratio / 100` when no API key or embedding fails
+- Assignment: greedy best-first 1-to-1 from similarity matrix
+
+**Adding V2**: create `matchers/v2.py`, implement `match_events` + `match_markets`, pass via `find_market_matches(matcher=YourMatcher())`. The orchestration layer (caching, date filtering, single-market shortcut) is matcher-agnostic.
+
+### Two-Level Matching Orchestration (`comparator.py:find_market_matches`)
 1. Optionally pre-filter both event lists by `max_days + 365` (loose cutoff — see Kalshi date quirk below)
-2. Embed event titles → cosine similarity matrix → greedy best-first assignment (event pairs)
-3. For each matched event pair, embed sub-market questions → greedy assign (bracket pairs)
+2. Call `matcher.match_events()` → event-level pairs
+3. For each matched event pair: single-market shortcut, then cache check, then `matcher.match_markets()`
 4. Single-market shortcut: if both sides have exactly 1 market, inherit event-level score (no re-embedding)
-5. Cache check before embedding: load cached scores + live prices on hit; re-embed on miss or invalidation
+5. Cache check before calling matcher: load cached scores + live prices on hit; re-embed on miss or invalidation
 
 ### Cache Strategy (`cache.py`)
 - Schema: `event_pairs` + `market_pairs` tables keyed on `(pm_event_id, ks_event_ticker)`
