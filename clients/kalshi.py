@@ -4,7 +4,6 @@ from config import KALSHI_API_KEY
 
 # NOTE: api.kalshi.com has moved; use api.elections.kalshi.com for public access
 BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
-MARKET_URL = "https://kalshi.com/markets"
 EVENT_URL = "https://kalshi.com/events"
 
 
@@ -35,40 +34,11 @@ def _build_question(m: dict, event_title: str) -> str:
     return title
 
 
-# Module-level cache: series_ticker -> URL slug, populated lazily on first fetch.
-# Kalshi URL format: /markets/{series_ticker_lower}/{slug}/{event_ticker_lower}
-# Slug = series title lowercased with spaces replaced by hyphens ("New Pope" -> "new-pope").
-_series_slug_cache: dict[str, str] = {}
-
-
-def _get_series_slug(series_ticker: str) -> str:
-    """
-    Fetch the URL slug for a series from the Kalshi /series endpoint.
-    Falls back to series_ticker.lower() if the fetch fails.
-    Results are cached in memory for the lifetime of the process.
-    """
-    if series_ticker in _series_slug_cache:
-        return _series_slug_cache[series_ticker]
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/series/{series_ticker}",
-            headers=_get_headers(),
-            timeout=10,
-        )
-        resp.raise_for_status()
-        title = resp.json().get("series", {}).get("title", "")
-        slug = title.lower().replace(" ", "-") if title else series_ticker.lower()
-    except Exception:
-        slug = series_ticker.lower()
-    _series_slug_cache[series_ticker] = slug
-    return slug
-
-
 def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: str = "", event_url: str = "") -> NormalizedMarket:
-    # Prices are in cents (0-100); convert to probability (0.0-1.0)
-    # Use ask prices: cost to actually buy each side
-    yes_price = _safe_float(m.get("yes_ask") or m.get("last_price", 0)) / 100.0
-    no_price = _safe_float(m.get("no_ask") or m.get("no_bid", 0)) / 100.0
+    # Kalshi API returns prices as *_dollars fields in 0.0–1.0 range (dollar price on $1 contract).
+    # Use ask prices so the cost-to-enter calculation is accurate.
+    yes_price = _safe_float(m.get("yes_ask_dollars") or m.get("last_price_dollars", 0))
+    no_price = _safe_float(m.get("no_ask_dollars") or m.get("no_bid_dollars", 0))
     if no_price == 0.0 and yes_price > 0.0:
         no_price = round(1.0 - yes_price, 4)
 
@@ -76,7 +46,7 @@ def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: st
         question=_build_question(m, parent_event_title),
         yes_price=yes_price,
         no_price=no_price,
-        volume=_safe_float(m.get("volume", 0)),
+        volume=_safe_float(m.get("volume_fp") or m.get("volume", 0)),
         source="kalshi",
         market_id=m.get("ticker", ""),
         parent_event_id=parent_event_id,
@@ -88,13 +58,10 @@ def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: st
 
 def _normalize_event(e: dict) -> NormalizedEvent:
     ticker = e.get("event_ticker", e.get("ticker", ""))
-    series_ticker = e.get("series_ticker", ticker)
     event_title = e.get("title", "")
 
-    # Build exact event URL: /markets/{series}/{slug}/{event_ticker}
-    # e.g. https://kalshi.com/markets/kxnewpope/new-pope/kxnewpope-70
-    slug = _get_series_slug(series_ticker)
-    event_url = f"{MARKET_URL}/{series_ticker.lower()}/{slug}/{ticker.lower()}"
+    # Direct event URL — no extra API call needed.
+    event_url = f"{EVENT_URL}/{ticker.lower()}"
 
     # Only include active sub-markets
     raw_markets = [m for m in e.get("markets", []) if m.get("status") == "active"]
