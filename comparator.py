@@ -74,9 +74,6 @@ def normalize_category(raw: str) -> str:
 # ── Shared greedy best-first assignment ──────────────────────────────────────
 
 
-_DATE_BUFFER_DAYS = 5  # max allowable end_date gap between matched events
-
-
 def _greedy_match_events(
     poly_events: list[NormalizedEvent],
     kalshi_events: list[NormalizedEvent],
@@ -86,11 +83,6 @@ def _greedy_match_events(
     """
     Scores are stored as-is (cosine: 0.0–1.0, fuzzy: 0–100).
     min_score must be in the same units as the sim_matrix values.
-
-    In addition to the semantic score threshold, candidate pairs are
-    rejected if both events have an end_date and those dates are more
-    than _DATE_BUFFER_DAYS apart — a semantically equivalent event on
-    two platforms must resolve around the same time.
     """
     results: list[MatchResult] = []
     used_poly: set[int] = set()
@@ -107,9 +99,6 @@ def _greedy_match_events(
         if score < min_score:
             break
         if i in used_poly or j in used_kalshi:
-            continue
-        diff = _days_apart(poly_events[i].end_date, kalshi_events[j].end_date)
-        if diff is not None and diff > _DATE_BUFFER_DAYS:
             continue
         results.append(MatchResult(
             poly_event=poly_events[i],
@@ -232,14 +221,12 @@ def find_market_matches(
     days before any embedding is performed.
     """
     if max_days is not None:
-        # Use a loose cutoff (max_days + date buffer) so we don't drop events
-        # that are slightly over the limit on one platform but whose matched
-        # partner brings days_to_resolution = min(pm, ks) within the window.
-        # find_arbitrage applies the strict max_days filter on the cross-platform
-        # minimum, so no out-of-window results will reach the final output.
-        loose_cutoff = max_days + _DATE_BUFFER_DAYS
-        poly_events = _filter_events_by_days(poly_events, loose_cutoff)
-        kalshi_events = _filter_events_by_days(kalshi_events, loose_cutoff)
+        # Pre-filter loosely so we don't discard events whose partner closes
+        # within the window (find_arbitrage enforces the strict min-date cutoff).
+        # Kalshi settlement dates can run months past the actual event, so use
+        # a generous extra buffer of 365 days on the pre-filter.
+        poly_events = _filter_events_by_days(poly_events, max_days + 365)
+        kalshi_events = _filter_events_by_days(kalshi_events, max_days + 365)
 
     event_matches = find_matches(
         poly_events, kalshi_events,
