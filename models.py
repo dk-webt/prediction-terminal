@@ -14,6 +14,11 @@ class NormalizedMarket:
     parent_event_title: str = ""
     close_time: str = ""            # ISO date "YYYY-MM-DD" when market resolves
     url: str = ""                   # Direct link to this market/bracket
+    # V2 fields — rich text for semantic matching
+    description: str = ""           # PM: market.description; KS: ""
+    group_item_title: str = ""      # PM: market.groupItemTitle; KS: ""
+    rules_primary: str = ""         # KS: market.rules_primary; PM: ""
+    rules_secondary: str = ""       # KS: market.rules_secondary; PM: ""
 
 
 @dataclass
@@ -27,6 +32,10 @@ class NormalizedEvent:
     end_date: str
     url: str
     markets: list = field(default_factory=list)  # list[NormalizedMarket]
+    # V2 fields — rich text for semantic matching
+    description: str = ""           # PM: event.description; KS: "" (not available)
+    tags: list[str] = field(default_factory=list)  # PM: [tag.label, ...]; KS: []
+    sub_title: str = ""             # KS: event.sub_title; PM: ""
 
 
 @dataclass

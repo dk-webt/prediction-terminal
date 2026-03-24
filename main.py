@@ -181,8 +181,6 @@ def cmd_compare(args: argparse.Namespace) -> None:
     limit: int = args.limit
     min_score: float = args.min_score
     category: str | None = args.category
-    use_embeddings = not args.no_embeddings
-
     console.print(f"\n[bold]Fetching events from both platforms[/bold] (limit={limit} each)…")
     poly_events, kalshi_events = _fetch_both(limit, category)
 
@@ -200,18 +198,16 @@ def cmd_compare(args: argparse.Namespace) -> None:
             poly_events, kalshi_events,
             event_min_score=args.event_min_score,
             market_min_score=min_score,
-            use_embeddings=use_embeddings,
             refresh_cache=getattr(args, "refresh_cache", False),
         )
     else:
-        _run_event_compare(poly_events, kalshi_events, min_score, use_embeddings)
+        _run_event_compare(poly_events, kalshi_events, min_score)
 
 
 def _run_event_compare(
     poly_events: list[NormalizedEvent],
     kalshi_events: list[NormalizedEvent],
     min_score: float,
-    use_embeddings: bool,
 ) -> None:
     console.print(f"\n[bold]Comparing events[/bold] (min score: {min_score})…\n")
     matches = default_matcher().match_events(poly_events, kalshi_events, min_score)
@@ -279,13 +275,11 @@ def _run_bracket_compare(
     kalshi_events: list[NormalizedEvent],
     event_min_score: float,
     market_min_score: float,
-    use_embeddings: bool,
     refresh_cache: bool = False,
 ) -> None:
-    mode = "semantic embeddings" if use_embeddings else "fuzzy matching"
     cache_note = " [dim](cache bypassed)[/dim]" if refresh_cache else ""
     console.print(
-        f"\n[bold]Step 1:[/bold] Matching events via [cyan]{mode}[/cyan] "
+        f"\n[bold]Step 1:[/bold] Matching events via [cyan]semantic embeddings[/cyan] "
         f"(min score: {event_min_score}){cache_note}…"
     )
 
@@ -293,7 +287,6 @@ def _run_bracket_compare(
         poly_events, kalshi_events,
         event_min_score=event_min_score,
         market_min_score=market_min_score,
-        use_embeddings=use_embeddings,
         refresh_cache=refresh_cache,
     )
 
@@ -459,7 +452,6 @@ def cmd_cache(args: argparse.Namespace) -> None:
 
 def cmd_arb(args: argparse.Namespace) -> None:
     limit: int = args.limit
-    use_embeddings = not args.no_embeddings
     min_profit_frac = args.min_profit / 100.0  # CLI takes cents, internals use fraction
     max_days: int | None = args.max_days
 
@@ -478,7 +470,6 @@ def cmd_arb(args: argparse.Namespace) -> None:
         poly_events, kalshi_events,
         event_min_score=args.event_min_score,
         market_min_score=args.min_score,
-        use_embeddings=use_embeddings,
         refresh_cache=getattr(args, "refresh_cache", False),
     )
 

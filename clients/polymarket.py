@@ -46,6 +46,8 @@ def _normalize_market(m: dict, parent_event_id: str = "", parent_event_title: st
         parent_event_title=parent_event_title,
         close_time=(m.get("endDate") or "")[:10],
         url=parent_event_url,
+        description=m.get("description", ""),
+        group_item_title=m.get("groupItemTitle", ""),
     )
 
 
@@ -78,6 +80,8 @@ def _normalize_event(e: dict) -> NormalizedEvent:
         end_date=(e.get("endDate") or "")[:10],
         url=f"{MARKET_URL}/{e.get('slug', '')}",
         markets=markets,
+        description=e.get("description", ""),
+        tags=tags,
     )
 
 
