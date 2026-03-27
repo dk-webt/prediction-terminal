@@ -458,3 +458,173 @@ html, body, #root {
   font-size: 11px;
   color: var(--gray);
 }
+
+/* ── BTC 15-Min Options Panel ───────────────────────────────────────────── */
+
+.btc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.btc-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 8px;
+  background: var(--bg-header);
+  border: 1px solid var(--border);
+}
+
+.btc-title {
+  color: var(--amber-hi);
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.btc-window {
+  color: var(--amber);
+}
+
+.btc-remaining {
+  margin-left: auto;
+  color: var(--green);
+  font-weight: bold;
+}
+
+.btc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.btc-platform-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.btc-platform-header {
+  color: var(--amber-hi);
+  font-weight: bold;
+  font-size: 13px;
+  letter-spacing: 2px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.btc-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.btc-field.btc-strike {
+  padding: 6px 0;
+  margin: 2px 0;
+  background: var(--amber-faint);
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.btc-label {
+  color: var(--amber-dim);
+  font-size: 11px;
+}
+
+.btc-value {
+  color: var(--amber);
+}
+
+.btc-highlight {
+  color: var(--amber-hi);
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.btc-dim {
+  color: var(--gray);
+  font-size: 11px;
+}
+
+.btc-link {
+  color: var(--amber);
+  text-decoration: none;
+}
+
+.btc-link:hover {
+  color: var(--amber-hi);
+  text-decoration: underline;
+}
+
+.btc-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.btc-price-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0;
+}
+
+.btc-price-table th {
+  color: var(--amber-dim);
+  font-size: 11px;
+  font-weight: normal;
+  text-align: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.btc-price-table th:first-child {
+  text-align: left;
+}
+
+.btc-price-table td {
+  text-align: center;
+  padding: 4px 8px;
+}
+
+.btc-price-table td:first-child {
+  text-align: left;
+}
+
+.btc-ask {
+  color: var(--red);
+}
+
+.btc-bid {
+  color: var(--green);
+}
+
+.btc-last {
+  color: var(--amber);
+}
+
+.btc-spread {
+  color: var(--amber-dim);
+}
+
+.btc-error {
+  color: var(--red);
+  padding: 8px;
+}
+
+.btc-footer {
+  padding: 4px 8px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}

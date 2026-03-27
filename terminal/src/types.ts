@@ -59,6 +59,48 @@ export interface CacheStats {
   db_path: string
 }
 
+export interface BtcPlatformData {
+  platform: string
+  // Kalshi fields
+  ticker?: string
+  title?: string
+  floor_strike?: number
+  open_time?: string
+  close_time?: string
+  yes_ask?: number
+  yes_bid?: number
+  no_ask?: number
+  no_bid?: number
+  last_price?: number
+  volume?: number
+  open_interest?: number
+  rules?: string
+  url?: string
+  // Polymarket fields
+  slug?: string
+  event_start_time?: string
+  end_time?: string
+  up_ask?: number
+  up_bid?: number
+  down_ask?: number
+  down_bid?: number
+  fee_schedule?: { exponent: number; rate: number; takerOnly: boolean; rebateRate: number }
+  description?: string
+  resolution_source?: string
+  // PM WebSocket token IDs
+  token_ids?: string[]
+  // Error case
+  error?: string
+}
+
+export interface BtcSnapshot {
+  kalshi: BtcPlatformData | null
+  polymarket: BtcPlatformData | null
+  timestamp: string
+  streaming?: boolean
+  kalshi_mode?: 'websocket' | 'polling'
+}
+
 // Extend Window for Electron bridge
 declare global {
   interface Window {

@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react'
 import { useStore } from '../store'
 import type { ArbitrageResult, CompareResult } from '../types'
 import type { CenterSnapshot } from '../store'
+import BtcPanel from './BtcPanel'
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
@@ -233,6 +234,7 @@ function HelpView() {
     ['CACHE', 'Show cache statistics'],
     ['CLEAR', 'Clear the semantic match cache'],
     ['LIMIT N', 'Set default event limit'],
+    ['BTC', 'Live BTC 15-min binary options watcher (auto-refreshes)'],
     ['R', 'Refresh / re-run last command (fetches fresh data)'],
     ['? / HELP', 'Show this reference'],
     ['Q', 'Quit terminal'],
@@ -409,6 +411,7 @@ const VIEW_LABELS: Record<string, string> = {
   CMP: 'COMPARISON',
   HELP: 'HELP',
   CACHE: 'CACHE',
+  BTC: 'BTC 15-MIN OPTIONS',
   CATS: 'CATEGORIES',
   HIST: 'HISTORY',
 }
@@ -461,6 +464,7 @@ export default function ResultsPanel({ focused }: { focused: boolean }) {
         {!loading && centerView === 'CACHE' && <CacheView />}
         {!loading && centerView === 'CATS' && <CatsView />}
         {!loading && centerView === 'HIST' && <HistView />}
+        {centerView === 'BTC' && <BtcPanel />}
       </div>
     </div>
   )

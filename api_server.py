@@ -280,6 +280,18 @@ async def get_categories():
         raise HTTPException(status_code=502, detail=str(exc))
 
 
+@app.get("/btc/snapshot")
+async def get_btc_snapshot():
+    """Fetch current BTC 15-min binary option contracts from both platforms."""
+    def fetch():
+        from clients.btc_watcher import fetch_btc_snapshot
+        return fetch_btc_snapshot()
+    try:
+        return await asyncio.to_thread(fetch)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @app.get("/cache/stats")
 async def get_cache_stats():
     from cache import cache_stats
@@ -298,6 +310,7 @@ async def clear_cache_endpoint():
 @app.websocket("/ws/status")
 async def websocket_status(websocket: WebSocket):
     await websocket.accept()
+    btc_stream = None  # BtcStreamManager instance, if active
     try:
         while True:
             data = await websocket.receive_json()
@@ -327,6 +340,23 @@ async def websocket_status(websocket: WebSocket):
                     max_days=data.get("max_days"),
                     refresh_cache=bool(data.get("refresh_cache", False)),
                 )
+            elif cmd == "btc":
+                action = data.get("action", "subscribe")
+                if action == "subscribe" and btc_stream is None:
+                    from clients.btc_watcher import BtcStreamManager
+
+                    async def _btc_push(snapshot: dict):
+                        try:
+                            await websocket.send_json({"type": "btc_update", **snapshot})
+                        except Exception:
+                            pass
+
+                    btc_stream = BtcStreamManager(on_update=_btc_push)
+                    await btc_stream.start()
+                elif action == "unsubscribe" and btc_stream is not None:
+                    await btc_stream.stop()
+                    btc_stream = None
+                    await websocket.send_json({"type": "btc_stopped"})
             else:
                 await websocket.send_json({"type": "error", "msg": f"Unknown WS command: {cmd}"})
 
@@ -337,6 +367,10 @@ async def websocket_status(websocket: WebSocket):
             await websocket.send_json({"type": "error", "msg": str(exc)})
         except Exception:
             pass
+    finally:
+        # Clean up BTC stream on disconnect
+        if btc_stream is not None:
+            await btc_stream.stop()
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

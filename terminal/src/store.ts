@@ -4,10 +4,11 @@ import type {
   ArbitrageResult,
   CompareResult,
   CacheStats,
+  BtcSnapshot,
 } from './types'
 
-export type View = 'IDLE' | 'PM' | 'KS' | 'ARB' | 'CMP' | 'HELP' | 'CACHE' | 'CATS' | 'HIST'
-export type CenterView = 'IDLE' | 'ARB' | 'CMP' | 'HELP' | 'CACHE' | 'CATS' | 'HIST'
+export type View = 'IDLE' | 'PM' | 'KS' | 'ARB' | 'CMP' | 'HELP' | 'CACHE' | 'CATS' | 'HIST' | 'BTC'
+export type CenterView = 'IDLE' | 'ARB' | 'CMP' | 'HELP' | 'CACHE' | 'CATS' | 'HIST' | 'BTC'
 export type WsStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 
 export type CenterSnapshot = {
@@ -28,6 +29,8 @@ interface TerminalState {
   cacheStats: CacheStats | null
   cacheStatsBar: CacheStats | null   // polled for status bar
   categories: { polymarket: string[]; kalshi: string[] } | null
+  btcSnapshot: BtcSnapshot | null
+  btcAutoRefresh: boolean
 
   // UI state
   activeView: View
@@ -56,6 +59,8 @@ interface TerminalState {
   setCacheStats: (v: CacheStats | null) => void
   setCacheStatsBar: (v: CacheStats | null) => void
   setCategories: (v: { polymarket: string[]; kalshi: string[] } | null) => void
+  setBtcSnapshot: (v: BtcSnapshot | null) => void
+  setBtcAutoRefresh: (v: boolean) => void
   setActiveView: (v: View) => void
   setActiveCategory: (v: string | null) => void
   setSelectedIndex: (v: number | null) => void
@@ -80,6 +85,8 @@ export const useStore = create<TerminalState>((set) => ({
   cacheStats: null,
   cacheStatsBar: null,
   categories: null,
+  btcSnapshot: null,
+  btcAutoRefresh: false,
   activeView: 'IDLE',
   activeCategory: null,
   selectedIndex: null,
@@ -101,6 +108,8 @@ export const useStore = create<TerminalState>((set) => ({
   setCacheStats: (cacheStats) => set({ cacheStats }),
   setCacheStatsBar: (cacheStatsBar) => set({ cacheStatsBar }),
   setCategories: (categories) => set({ categories }),
+  setBtcSnapshot: (btcSnapshot) => set({ btcSnapshot }),
+  setBtcAutoRefresh: (btcAutoRefresh) => set({ btcAutoRefresh }),
   setActiveView: (activeView) => set({ activeView }),
   setActiveCategory: (activeCategory) => set({ activeCategory }),
   setSelectedIndex: (selectedIndex) => set({ selectedIndex }),

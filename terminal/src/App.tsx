@@ -19,6 +19,7 @@ export default function App() {
     setCacheStats, setCategories, setActiveView, setActiveCategory, setLastCommand, setWsStatus,
     setCacheStatsBar, setSelectedIndex, setActivePanel, setDefaultLimit,
     setCenterView, navigateCenterHistory, jumpToCenterHistory,
+    setBtcSnapshot, setBtcAutoRefresh,
     activePanel, defaultLimit,
   } = useStore()
 
@@ -78,6 +79,14 @@ export default function App() {
         }
         state.setSelectedIndex(null)
         pendingCmdRef.current = ''
+      } else if (msg.type === 'btc_update') {
+        const state = useStore.getState()
+        state.setBtcSnapshot(msg)
+        state.setLoading(false)
+        state.setProgressMsg('')
+        // Don't clear pendingCmdRef — BTC streams continuously
+      } else if (msg.type === 'btc_stopped') {
+        useStore.getState().setBtcAutoRefresh(false)
       } else if (msg.type === 'error') {
         const state = useStore.getState()
         state.setLoading(false)
@@ -112,6 +121,10 @@ export default function App() {
     const interval = setInterval(fetchCacheStats, 30_000)
     return () => {
       clearInterval(interval)
+      // Unsubscribe BTC stream on unmount
+      if (useStore.getState().btcAutoRefresh && wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'btc', action: 'unsubscribe' }))
+      }
       wsRef.current?.close()
     }
   }, [connectWs, fetchCacheStats])
@@ -139,6 +152,14 @@ export default function App() {
       }
 
       useStore.getState().setErrorMsg('')
+
+      // Unsubscribe from BTC stream when navigating away
+      if (cmd !== 'BTC' && useStore.getState().btcAutoRefresh) {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'btc', action: 'unsubscribe' }))
+        }
+        setBtcAutoRefresh(false)
+      }
 
       if (cmd === 'R') {
         if (prevCmdRef.current) runCommand(prevCmdRef.current)
@@ -254,9 +275,9 @@ export default function App() {
         }
 
         case 'LIMIT': {
-          if (!isNaN(numArg) && numArg > 0) {
-            setDefaultLimit(numArg)
-            setProgressMsg(`Default limit set to ${numArg}`)
+          if (!isNaN(limit) && limit > 0) {
+            setDefaultLimit(limit)
+            setProgressMsg(`Default limit set to ${limit}`)
             setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
           }
           break
@@ -278,6 +299,21 @@ export default function App() {
               setLoading(false)
               setErrorMsg(String(e))
             })
+          break
+        }
+
+        case 'BTC': {
+          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+            setErrorMsg('WebSocket not connected. Retry in a moment.')
+            return
+          }
+          setActiveView('BTC')
+          setCenterView('BTC')
+          setLoading(true)
+          setProgressMsg('Connecting to BTC 15-min live stream...')
+          setBtcAutoRefresh(true)
+          // Subscribe via WebSocket — server opens PM WS + Kalshi polling
+          wsRef.current.send(JSON.stringify({ type: 'btc', action: 'subscribe' }))
           break
         }
 
