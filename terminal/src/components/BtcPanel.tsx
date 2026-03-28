@@ -32,6 +32,33 @@ function useLiveStatus(snapshot: BtcSnapshot) {
   return { label: 'LIVE', color: 'var(--green)' }
 }
 
+function usePlatformStatus(lastUpdate: string | undefined): { label: string; color: string } {
+  const btcWsStatus = useStore((s) => s.btcWsStatus)
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 2000)
+    return () => clearInterval(id)
+  }, [])
+
+  if (btcWsStatus !== 'connected') {
+    return { label: 'DISCONNECTED', color: 'var(--red)' }
+  }
+
+  const age = lastUpdate ? now - new Date(lastUpdate).getTime() : Infinity
+  if (age > STALE_THRESHOLD_MS) {
+    return { label: 'STALE', color: 'var(--amber)' }
+  }
+  return { label: 'LIVE', color: 'var(--green)' }
+}
+
+function PlatformStatusDot({ lastUpdate }: { lastUpdate: string | undefined }) {
+  const { label, color } = usePlatformStatus(lastUpdate)
+  return (
+    <span style={{ color, fontSize: 9, marginLeft: 'auto', fontWeight: 'normal' }}>{label}</span>
+  )
+}
+
 function BtcFooter({ snapshot }: { snapshot: BtcSnapshot }) {
   const { label, color } = useLiveStatus(snapshot)
 
@@ -130,8 +157,9 @@ export default function BtcPanel() {
       <div className="btc-grid">
         {/* Kalshi */}
         <div className="btc-platform-card">
-          <div className="btc-platform-header">
+          <div className="btc-platform-header" style={{ display: 'flex', alignItems: 'center' }}>
             KALSHI{rolling && ks ? ' (waiting for new contract...)' : ''}
+            <PlatformStatusDot lastUpdate={btcSnapshot.kalshi_last_update} />
           </div>
           {ks?.error ? (
             <div className="btc-error">{ks.error}</div>
@@ -207,7 +235,10 @@ export default function BtcPanel() {
 
         {/* Polymarket */}
         <div className="btc-platform-card">
-          <div className="btc-platform-header">POLYMARKET</div>
+          <div className="btc-platform-header" style={{ display: 'flex', alignItems: 'center' }}>
+            POLYMARKET
+            <PlatformStatusDot lastUpdate={btcSnapshot.polymarket_last_update} />
+          </div>
           {pm?.error ? (
             <div className="btc-error">{pm.error}</div>
           ) : pm ? (

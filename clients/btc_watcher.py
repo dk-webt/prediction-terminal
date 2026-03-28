@@ -407,6 +407,7 @@ class BtcStreamManager:
     MIN_PUSH_INTERVAL = 0.5      # seconds — throttle pushes to frontend
     ROLL_RETRY_INTERVAL = 0.5    # seconds between retries when new contract not ready
     ROLL_MAX_RETRIES = 60        # max retries (~30s max wait for slow platforms)
+    STALE_THRESHOLD = 10         # seconds — log warning when platform data goes stale
 
     def __init__(self, on_update):
         self._on_update = on_update
@@ -423,6 +424,10 @@ class BtcStreamManager:
         self._rolling = False  # True while window roll is in progress
         self._ks_last_update: str = ""   # ISO timestamp of last Kalshi data
         self._pm_last_update: str = ""   # ISO timestamp of last Polymarket data
+        self._ks_last_recv: float = 0.0  # monotonic time of last KS data
+        self._pm_last_recv: float = 0.0  # monotonic time of last PM data
+        self._ks_stale_logged = False    # avoid spamming stale warnings
+        self._pm_stale_logged = False
 
         # Signals WS loops to reconnect with new tokens/tickers
         self._pm_reconnect = asyncio.Event()
@@ -439,15 +444,14 @@ class BtcStreamManager:
         self._kalshi_data = initial["kalshi"]
         self._pm_data = initial["polymarket"]
 
-        now_iso = datetime.now(timezone.utc).isoformat()
         if self._kalshi_data and not self._kalshi_data.get("error"):
             self._kalshi_ticker = self._kalshi_data.get("ticker", "")
-            self._ks_last_update = now_iso
+            self._mark_ks_recv()
 
         if self._pm_data and not self._pm_data.get("error"):
             self._pm_token_ids = self._pm_data.get("token_ids", [])
             self._current_slug = self._pm_data.get("slug", "")
-            self._pm_last_update = now_iso
+            self._mark_pm_recv()
 
         log.info("INIT: snapshot in %.0fms | slug=%s ks_ticker=%s pm_tokens=%d pm_strike=%s",
                  (t1 - t0) * 1000, self._current_slug, self._kalshi_ticker,
@@ -480,12 +484,49 @@ class BtcStreamManager:
                 pass
         self._tasks.clear()
 
+    def _mark_ks_recv(self):
+        """Mark Kalshi data received — resets stale flag."""
+        self._ks_last_recv = time.monotonic()
+        self._mark_ks_recv()
+        if self._ks_stale_logged:
+            log.info("KS RECOVERED: data flowing again after stale period")
+            self._ks_stale_logged = False
+
+    def _mark_pm_recv(self):
+        """Mark Polymarket data received — resets stale flag."""
+        self._pm_last_recv = time.monotonic()
+        self._mark_pm_recv()
+        if self._pm_stale_logged:
+            log.info("PM RECOVERED: data flowing again after stale period")
+            self._pm_stale_logged = False
+
+    def _check_staleness(self):
+        """Log warnings when platform data goes stale. Skipped during rolls."""
+        if self._rolling:
+            return
+        now = time.monotonic()
+        if self._ks_last_recv > 0:
+            ks_age = now - self._ks_last_recv
+            if ks_age > self.STALE_THRESHOLD and not self._ks_stale_logged:
+                log.warning("KS STALE: no Kalshi data for %.0fs (ticker=%s, mode=%s)",
+                            ks_age, self._kalshi_ticker,
+                            "websocket" if kalshi_ws_available() else "polling")
+                self._ks_stale_logged = True
+        if self._pm_last_recv > 0:
+            pm_age = now - self._pm_last_recv
+            if pm_age > self.STALE_THRESHOLD and not self._pm_stale_logged:
+                log.warning("PM STALE: no Polymarket data for %.0fs (slug=%s)",
+                            pm_age, self._current_slug)
+                self._pm_stale_logged = True
+
     async def _push_update(self, force: bool = False):
         """Build merged snapshot and send to callback (throttled)."""
         now = asyncio.get_event_loop().time()
         if not force and (now - self._last_push_time) < self.MIN_PUSH_INTERVAL:
             return
         self._last_push_time = now
+
+        self._check_staleness()
 
         snapshot = {
             "kalshi": self._kalshi_data,
@@ -568,11 +609,18 @@ class BtcStreamManager:
 
     async def _kalshi_recv_loop(self, ws):
         """Receive and process Kalshi WS messages."""
+        consecutive_timeouts = 0
         while self._running:
             try:
                 raw = await asyncio.wait_for(ws.recv(), timeout=60)
+                consecutive_timeouts = 0
             except asyncio.TimeoutError:
-                # No data in 60s — send a ping to check connection
+                consecutive_timeouts += 1
+                log.warning("KS WS idle: no data for %ds (ticker=%s)",
+                            consecutive_timeouts * 60, self._kalshi_ticker)
+                if consecutive_timeouts >= 3:
+                    log.warning("KS WS idle too long (%ds), forcing reconnect", consecutive_timeouts * 60)
+                    return  # exits recv loop → outer loop reconnects
                 continue
 
             try:
@@ -585,17 +633,17 @@ class BtcStreamManager:
 
             if msg_type == "ticker":
                 self._apply_kalshi_ticker(data)
-                self._ks_last_update = datetime.now(timezone.utc).isoformat()
+                self._mark_ks_recv()
                 await self._push_update()
 
             elif msg_type == "orderbook_snapshot":
                 self._apply_kalshi_orderbook_snapshot(data)
-                self._ks_last_update = datetime.now(timezone.utc).isoformat()
+                self._mark_ks_recv()
                 await self._push_update()
 
             elif msg_type == "orderbook_delta":
                 self._apply_kalshi_orderbook_delta(data)
-                self._ks_last_update = datetime.now(timezone.utc).isoformat()
+                self._mark_ks_recv()
                 await self._push_update()
 
             elif msg_type == "error":
@@ -680,7 +728,7 @@ class BtcStreamManager:
                         log.info("KS poll: new ticker %s (was %s)", new_ticker, self._kalshi_ticker)
                     self._kalshi_data = data
                     self._kalshi_ticker = new_ticker
-                    self._ks_last_update = datetime.now(timezone.utc).isoformat()
+                    self._mark_ks_recv()
                     await self._push_update()
             except Exception as e:
                 log.debug("Kalshi poll error: %s", e)
@@ -788,7 +836,7 @@ class BtcStreamManager:
                     updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
 
             if updated:
-                self._pm_last_update = datetime.now(timezone.utc).isoformat()
+                self._mark_pm_recv()
                 await self._push_update()
 
     def _apply_pm_price(self, asset_id: str, best_bid: float, best_ask: float) -> bool:
@@ -876,6 +924,7 @@ class BtcStreamManager:
         contract isn't available yet.
         """
         while self._running:
+          try:
             wait = self._seconds_until_next_window()
             now = datetime.now(timezone.utc)
             target = now + timedelta(seconds=wait)
@@ -931,7 +980,8 @@ class BtcStreamManager:
 
                 for (label, _), result in zip(coros, results):
                     if isinstance(result, Exception):
-                        log.debug("ROLL %s error (%.0fms): %s", label, fetch_elapsed * 1000, result)
+                        log.warning("ROLL %s exception (attempt %d, %.0fms): %s",
+                                    label, attempt, fetch_elapsed * 1000, result)
                         continue
 
                     if label == "pm":
@@ -944,6 +994,7 @@ class BtcStreamManager:
                             self._pm_data = result
                             self._pm_token_ids = result.get("token_ids", [])
                             pm_ok = True
+                            self._mark_pm_recv()
                             log.info("ROLL PM ready (attempt %d, %.0fms)", attempt, fetch_elapsed * 1000)
                     elif label == "ks":
                         got_ticker = result.get("ticker", "") if result else ""
@@ -956,6 +1007,7 @@ class BtcStreamManager:
                             self._kalshi_data = result
                             self._kalshi_ticker = got_ticker
                             ks_ok = True
+                            self._mark_ks_recv()
                             log.info("ROLL KS ready (attempt %d, %.0fms, ticker=%s)",
                                      attempt, fetch_elapsed * 1000, got_ticker)
 
@@ -968,7 +1020,16 @@ class BtcStreamManager:
 
             self._rolling = False
             roll_elapsed = time.monotonic() - roll_start
-            log.info("ROLL DONE: pm_ok=%s ks_ok=%s total=%.0fms", pm_ok, ks_ok, roll_elapsed * 1000)
+
+            if not pm_ok and not ks_ok:
+                log.warning("ROLL FAILED: neither platform returned new contract after %d attempts (%.0fms)",
+                            self.ROLL_MAX_RETRIES, roll_elapsed)
+            elif not pm_ok:
+                log.warning("ROLL PARTIAL: PM failed to return new contract (KS ok) after %.0fms", roll_elapsed)
+            elif not ks_ok:
+                log.warning("ROLL PARTIAL: KS failed to return new contract (PM ok) after %.0fms", roll_elapsed)
+            else:
+                log.info("ROLL DONE: pm_ok=%s ks_ok=%s total=%.0fms", pm_ok, ks_ok, roll_elapsed * 1000)
 
             # Signal WS loops to reconnect with new tokens/tickers
             if pm_ok:
@@ -985,3 +1046,10 @@ class BtcStreamManager:
                 await self._poll_pm_strike()
             elif pm_ok:
                 log.info("STRIKE OK: $%.2f", self._pm_data.get("floor_strike", 0))
+
+          except asyncio.CancelledError:
+            raise
+          except Exception as exc:
+            log.error("ROLL LOOP CRASHED: %s — will retry next window", exc, exc_info=True)
+            self._rolling = False
+            # Don't break — sleep until next window and try again
