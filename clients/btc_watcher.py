@@ -924,14 +924,17 @@ class BtcStreamManager:
                             log.info("ROLL PM ready (attempt %d, %.0fms)", attempt, fetch_elapsed * 1000)
                     elif label == "ks":
                         got_ticker = result.get("ticker", "") if result else ""
-                        log.debug("ROLL KS response: ticker=%s error=%s strike=%s",
-                                  got_ticker, result.get("error") if result else "null",
-                                  result.get("floor_strike") if result else "null")
-                        if result and not result.get("error"):
+                        log.debug("ROLL KS response: ticker=%s (old=%s) error=%s strike=%s close=%s",
+                                  got_ticker, self._kalshi_ticker,
+                                  result.get("error") if result else "null",
+                                  result.get("floor_strike") if result else "null",
+                                  result.get("close_time", "") if result else "null")
+                        if result and not result.get("error") and got_ticker != self._kalshi_ticker:
                             self._kalshi_data = result
-                            self._kalshi_ticker = result.get("ticker", "")
+                            self._kalshi_ticker = got_ticker
                             ks_ok = True
-                            log.info("ROLL KS ready (attempt %d, %.0fms)", attempt, fetch_elapsed * 1000)
+                            log.info("ROLL KS ready (attempt %d, %.0fms, ticker=%s)",
+                                     attempt, fetch_elapsed * 1000, got_ticker)
 
                 if pm_ok and ks_ok:
                     break
