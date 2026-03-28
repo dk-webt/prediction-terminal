@@ -35,12 +35,12 @@ export class ConnectionManager {
     this.callbacks = callbacks
   }
 
-  /** Connect all 3 sockets */
+  /** Connect all 3 sockets (safe to call multiple times) */
   connect() {
     this.destroyed = false
-    this.connectCmd()
-    this.connectBtc()
-    this.connectTrade()
+    if (!this.cmdWs || this.cmdWs.readyState >= WebSocket.CLOSING) this.connectCmd()
+    if (!this.btcWs || this.btcWs.readyState >= WebSocket.CLOSING) this.connectBtc()
+    if (!this.tradeWs || this.tradeWs.readyState >= WebSocket.CLOSING) this.connectTrade()
   }
 
   /** Disconnect all sockets */
@@ -109,6 +109,7 @@ export class ConnectionManager {
 
   private connectCmd() {
     if (this.destroyed) return
+    if (this.cmdWs && this.cmdWs.readyState < WebSocket.CLOSING) return
     this.callbacks.onStatusChange('cmd', 'connecting')
 
     const ws = new WebSocket(`${this.baseUrl}/ws/cmd`)
@@ -141,6 +142,7 @@ export class ConnectionManager {
 
   private connectBtc() {
     if (this.destroyed) return
+    if (this.btcWs && this.btcWs.readyState < WebSocket.CLOSING) return
     this.callbacks.onStatusChange('btc', 'connecting')
 
     const ws = new WebSocket(`${this.baseUrl}/ws/btc`)
@@ -175,6 +177,7 @@ export class ConnectionManager {
 
   private connectTrade() {
     if (this.destroyed) return
+    if (this.tradeWs && this.tradeWs.readyState < WebSocket.CLOSING) return
     this.callbacks.onStatusChange('trade', 'connecting')
 
     const ws = new WebSocket(`${this.baseUrl}/ws/trade`)

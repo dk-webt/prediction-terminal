@@ -456,7 +456,13 @@ async def websocket_btc(websocket: WebSocket):
                 action = data.get("action", "subscribe")
                 if action == "subscribe":
                     _btc_subscribers.add(websocket)
-                    await _btc_ensure_started()
+                    try:
+                        await _btc_ensure_started()
+                    except Exception as exc:
+                        log.error("BTC stream start failed: %s", exc, exc_info=True)
+                        await websocket.send_json({"type": "error", "msg": f"BTC start failed: {exc}"})
+                        _btc_subscribers.discard(websocket)
+                        continue
                     log.info("BTC subscriber added (total: %d)", len(_btc_subscribers))
                 elif action == "unsubscribe":
                     _btc_subscribers.discard(websocket)
@@ -487,8 +493,9 @@ async def websocket_btc(websocket: WebSocket):
                 await websocket.send_json({"type": "error", "msg": f"Unknown btc cmd: {cmd}"})
 
     except WebSocketDisconnect:
-        pass
+        log.info("/ws/btc: client disconnected")
     except Exception as exc:
+        log.error("/ws/btc: handler error: %s", exc, exc_info=True)
         try:
             await websocket.send_json({"type": "error", "msg": str(exc)})
         except Exception:
