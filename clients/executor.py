@@ -232,12 +232,14 @@ def _get_pm_client():
         log.info("Polymarket API creds derived for %s", POLYMARKET_WALLET_ADDRESS)
 
         # Create the full client with creds
+        # signature_type=1 (POLY_PROXY) for Polymarket proxy wallets
+        # signature_type=0 (EOA) for direct MetaMask/hardware wallets
         _pm_client = ClobClient(
             "https://clob.polymarket.com",
             key=POLYMARKET_PRIVATE_KEY,
             chain_id=137,
             creds=creds,
-            signature_type=0,  # EOA wallet
+            signature_type=1,  # POLY_PROXY wallet
             funder=POLYMARKET_WALLET_ADDRESS,
         )
         return _pm_client
