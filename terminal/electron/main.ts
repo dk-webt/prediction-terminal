@@ -1,6 +1,9 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
-import { spawn, ChildProcess } from 'child_process'
+import { spawn, execSync, ChildProcess } from 'child_process'
+
+// Suppress Chromium Autofill DevTools errors
+app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication')
 
 let mainWindow: BrowserWindow | null = null
 let pythonServer: ChildProcess | null = null
@@ -14,8 +17,22 @@ function getPythonPaths() {
   return { serverScript, serverCwd }
 }
 
+function killProcessOnPort(port: number) {
+  try {
+    // Works on macOS and Linux
+    const pids = execSync(`lsof -ti:${port}`, { encoding: 'utf-8' }).trim()
+    if (pids) {
+      console.log(`[main] Killing existing process(es) on port ${port}: ${pids.replace(/\n/g, ', ')}`)
+      execSync(`kill ${pids.replace(/\n/g, ' ')}`)
+    }
+  } catch {
+    // No process on port — expected on clean start
+  }
+}
+
 function startPythonServer() {
   const { serverScript, serverCwd } = getPythonPaths()
+  killProcessOnPort(8081)
   console.log('[main] Starting Python server:', serverScript)
 
   pythonServer = spawn('python3', [serverScript], {
