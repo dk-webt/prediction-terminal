@@ -487,7 +487,7 @@ class BtcStreamManager:
     def _mark_ks_recv(self):
         """Mark Kalshi data received — resets stale flag."""
         self._ks_last_recv = time.monotonic()
-        self._mark_ks_recv()
+        self._ks_last_update = datetime.now(timezone.utc).isoformat()
         if self._ks_stale_logged:
             log.info("KS RECOVERED: data flowing again after stale period")
             self._ks_stale_logged = False
@@ -495,7 +495,7 @@ class BtcStreamManager:
     def _mark_pm_recv(self):
         """Mark Polymarket data received — resets stale flag."""
         self._pm_last_recv = time.monotonic()
-        self._mark_pm_recv()
+        self._pm_last_update = datetime.now(timezone.utc).isoformat()
         if self._pm_stale_logged:
             log.info("PM RECOVERED: data flowing again after stale period")
             self._pm_stale_logged = False
