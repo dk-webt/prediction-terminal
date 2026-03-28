@@ -229,8 +229,13 @@ def _current_15m_slug() -> str:
     now = datetime.now(timezone.utc)
     minute = (now.minute // 15) * 15
     window_start = now.replace(minute=minute, second=0, microsecond=0)
+    window_end = window_start + timedelta(minutes=15)
     ts = int(calendar.timegm(window_start.timetuple()))
-    return f"btc-updown-15m-{ts}"
+    slug = f"btc-updown-15m-{ts}"
+    log.debug("_current_15m_slug: now=%s window=%s–%s slug=%s",
+              now.strftime("%H:%M:%S"), window_start.strftime("%H:%M:%S"),
+              window_end.strftime("%H:%M:%S"), slug)
+    return slug
 
 
 def _try_find_pm_btc_15m():
@@ -425,7 +430,9 @@ class BtcStreamManager:
         self._running = True
 
         # Initial REST fetch to get contract details + identifiers
+        t0 = time.monotonic()
         initial = await asyncio.to_thread(fetch_btc_snapshot)
+        t1 = time.monotonic()
         self._kalshi_data = initial["kalshi"]
         self._pm_data = initial["polymarket"]
 
@@ -435,6 +442,11 @@ class BtcStreamManager:
         if self._pm_data and not self._pm_data.get("error"):
             self._pm_token_ids = self._pm_data.get("token_ids", [])
             self._current_slug = self._pm_data.get("slug", "")
+
+        log.info("INIT: snapshot in %.0fms | slug=%s ks_ticker=%s pm_tokens=%d pm_strike=%s",
+                 (t1 - t0) * 1000, self._current_slug, self._kalshi_ticker,
+                 len(self._pm_token_ids),
+                 self._pm_data.get("floor_strike") if self._pm_data else None)
 
         # Push initial snapshot immediately
         await self._push_update(force=True)
@@ -835,7 +847,12 @@ class BtcStreamManager:
         minute = (now.minute // 15) * 15
         window_start = now.replace(minute=minute, second=0, microsecond=0)
         next_window = window_start + timedelta(minutes=15)
-        return max(0, (next_window - now).total_seconds())
+        secs = max(0, (next_window - now).total_seconds())
+        log.debug("_seconds_until_next_window: now=%s cur_window=%s next=%s wait=%.1fs",
+                  now.strftime("%H:%M:%S.%f")[:12],
+                  window_start.strftime("%H:%M:%S"),
+                  next_window.strftime("%H:%M:%S"), secs)
+        return secs
 
     async def _window_roll_loop(self):
         """
@@ -845,22 +862,37 @@ class BtcStreamManager:
         """
         while self._running:
             wait = self._seconds_until_next_window()
-            log.info("Next window roll in %.0fs", wait)
+            now = datetime.now(timezone.utc)
+            target = now + timedelta(seconds=wait)
+            log.info("ROLL TIMER: sleeping %.1fs until %s (now=%s, cur_slug=%s)",
+                     wait, target.strftime("%H:%M:%S.%f")[:12],
+                     now.strftime("%H:%M:%S.%f")[:12], self._current_slug)
             await asyncio.sleep(wait)
 
             if not self._running:
                 break
 
+            wake_time = datetime.now(timezone.utc)
+            log.info("ROLL WAKE: woke at %s (target was %s, drift=%.3fs)",
+                     wake_time.strftime("%H:%M:%S.%f")[:12],
+                     target.strftime("%H:%M:%S.%f")[:12],
+                     (wake_time - target).total_seconds())
+
             new_slug = _current_15m_slug()
-            log.info("Window rolled: %s -> %s", self._current_slug, new_slug)
+            log.info("ROLL START: %s -> %s", self._current_slug, new_slug)
             self._current_slug = new_slug
 
             pm_ok = False
             ks_ok = False
+            roll_start = time.monotonic()
 
             for attempt in range(1, self.ROLL_MAX_RETRIES + 1):
                 if not self._running:
                     break
+
+                attempt_start = time.monotonic()
+                log.debug("ROLL attempt %d/%d (pm_ok=%s ks_ok=%s)",
+                          attempt, self.ROLL_MAX_RETRIES, pm_ok, ks_ok)
 
                 # Fetch both platforms in parallel
                 coros = []
@@ -872,29 +904,44 @@ class BtcStreamManager:
                 results = await asyncio.gather(
                     *(c for _, c in coros), return_exceptions=True
                 )
+                fetch_elapsed = time.monotonic() - attempt_start
 
                 for (label, _), result in zip(coros, results):
                     if isinstance(result, Exception):
-                        log.debug("Window roll %s error: %s", label, result)
+                        log.debug("ROLL %s error (%.0fms): %s", label, fetch_elapsed * 1000, result)
                         continue
 
-                    if label == "pm" and result and not result.get("error"):
-                        if result.get("slug") == new_slug:
+                    if label == "pm":
+                        got_slug = result.get("slug", "") if result else ""
+                        log.debug("ROLL PM response: slug=%s (want=%s) error=%s strike=%s tokens=%d",
+                                  got_slug, new_slug, result.get("error") if result else "null",
+                                  result.get("floor_strike") if result else "null",
+                                  len(result.get("token_ids", [])) if result else 0)
+                        if result and not result.get("error") and got_slug == new_slug:
                             self._pm_data = result
                             self._pm_token_ids = result.get("token_ids", [])
                             pm_ok = True
-                            log.info("PM ready (attempt %d)", attempt)
-                    elif label == "ks" and result and not result.get("error"):
-                        self._kalshi_data = result
-                        self._kalshi_ticker = result.get("ticker", "")
-                        ks_ok = True
-                        log.info("KS ready (attempt %d)", attempt)
+                            log.info("ROLL PM ready (attempt %d, %.0fms)", attempt, fetch_elapsed * 1000)
+                    elif label == "ks":
+                        got_ticker = result.get("ticker", "") if result else ""
+                        log.debug("ROLL KS response: ticker=%s error=%s strike=%s",
+                                  got_ticker, result.get("error") if result else "null",
+                                  result.get("floor_strike") if result else "null")
+                        if result and not result.get("error"):
+                            self._kalshi_data = result
+                            self._kalshi_ticker = result.get("ticker", "")
+                            ks_ok = True
+                            log.info("ROLL KS ready (attempt %d, %.0fms)", attempt, fetch_elapsed * 1000)
 
                 if pm_ok and ks_ok:
                     break
 
+                log.debug("ROLL attempt %d incomplete, retrying in %.1fs", attempt, self.ROLL_RETRY_INTERVAL)
                 await self._push_update(force=True)
                 await asyncio.sleep(self.ROLL_RETRY_INTERVAL)
+
+            roll_elapsed = time.monotonic() - roll_start
+            log.info("ROLL DONE: pm_ok=%s ks_ok=%s total=%.0fms", pm_ok, ks_ok, roll_elapsed * 1000)
 
             # Signal WS loops to reconnect with new tokens/tickers
             if pm_ok:
@@ -907,4 +954,7 @@ class BtcStreamManager:
             # Strike price may not be available immediately at window open.
             # Retry fetching it until the Chainlink opening price is recorded.
             if pm_ok and not self._pm_data.get("floor_strike"):
+                log.info("STRIKE POLL: floor_strike missing, starting poll")
                 await self._poll_pm_strike()
+            elif pm_ok:
+                log.info("STRIKE OK: $%.2f", self._pm_data.get("floor_strike", 0))

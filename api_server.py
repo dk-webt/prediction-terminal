@@ -357,6 +357,24 @@ async def websocket_status(websocket: WebSocket):
                     await btc_stream.stop()
                     btc_stream = None
                     await websocket.send_json({"type": "btc_stopped"})
+            elif cmd == "btc_debug":
+                action = data.get("action", "get")
+                if action == "on":
+                    _set_btc_debug(True)
+                    await websocket.send_json({"type": "btc_debug_status", "enabled": True})
+                elif action == "off":
+                    _set_btc_debug(False)
+                    await websocket.send_json({"type": "btc_debug_status", "enabled": False})
+                elif action == "get":
+                    try:
+                        with open(BTC_DEBUG_LOG, "r") as f:
+                            log_text = f.read()
+                    except FileNotFoundError:
+                        log_text = "(no log file yet — enable with DBG ON)"
+                    await websocket.send_json({"type": "btc_debug_log", "log": log_text})
+                elif action == "clear":
+                    open(BTC_DEBUG_LOG, "w").close()
+                    await websocket.send_json({"type": "btc_debug_log", "log": "(cleared)"})
             else:
                 await websocket.send_json({"type": "error", "msg": f"Unknown WS command: {cmd}"})
 
@@ -374,6 +392,56 @@ async def websocket_status(websocket: WebSocket):
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
+
+
+BTC_DEBUG_LOG = os.path.join(os.path.dirname(__file__), "btc_debug.log")
+_btc_debug_handler: "logging.FileHandler | None" = None
+
+
+def _set_btc_debug(enabled: bool):
+    """Enable or disable BTC watcher debug logging to file."""
+    import logging
+    global _btc_debug_handler
+
+    btc_log = logging.getLogger("clients.btc_watcher")
+
+    if enabled and _btc_debug_handler is None:
+        fh = logging.FileHandler(BTC_DEBUG_LOG, mode="a")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(logging.Formatter(
+            "%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s",
+            datefmt="%H:%M:%S",
+        ))
+        btc_log.setLevel(logging.DEBUG)
+        btc_log.addHandler(fh)
+        _btc_debug_handler = fh
+        btc_log.info("=== DEBUG LOGGING ENABLED ===")
+    elif not enabled and _btc_debug_handler is not None:
+        btc_log.info("=== DEBUG LOGGING DISABLED ===")
+        btc_log.removeHandler(_btc_debug_handler)
+        _btc_debug_handler.close()
+        _btc_debug_handler = None
+        btc_log.setLevel(logging.WARNING)
+
+
+@app.get("/btc/debug-log")
+async def get_btc_debug_log():
+    """Return the BTC watcher debug log contents."""
+    try:
+        with open(BTC_DEBUG_LOG, "r") as f:
+            return {"log": f.read()}
+    except FileNotFoundError:
+        return {"log": "(no log file yet — enable with DBG ON)"}
+
+
+@app.delete("/btc/debug-log")
+async def clear_btc_debug_log():
+    """Clear the BTC watcher debug log."""
+    try:
+        open(BTC_DEBUG_LOG, "w").close()
+        return {"status": "cleared"}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)}
 
 
 if __name__ == "__main__":

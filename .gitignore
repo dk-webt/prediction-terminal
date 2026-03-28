@@ -17,3 +17,4 @@ package-lock.json
 
 # Test fixtures (large JSON snapshots, generated via test_matching.py snapshot)
 test_fixtures/
+btc_debug.log

@@ -235,6 +235,7 @@ function HelpView() {
     ['CLEAR', 'Clear the semantic match cache'],
     ['LIMIT N', 'Set default event limit'],
     ['BTC', 'Live BTC 15-min binary options watcher (auto-refreshes)'],
+    ['DBG ON/OFF', 'Enable/disable BTC debug logging (DBG to download, DBG CLEAR to reset)'],
     ['R', 'Refresh / re-run last command (fetches fresh data)'],
     ['? / HELP', 'Show this reference'],
     ['Q', 'Quit terminal'],

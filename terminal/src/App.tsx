@@ -87,6 +87,26 @@ export default function App() {
         // Don't clear pendingCmdRef — BTC streams continuously
       } else if (msg.type === 'btc_stopped') {
         useStore.getState().setBtcAutoRefresh(false)
+      } else if (msg.type === 'btc_debug_status') {
+        const enabled = msg.enabled as boolean
+        const state = useStore.getState()
+        state.setProgressMsg(`BTC debug logging ${enabled ? 'ON' : 'OFF'}`)
+        state.setLoading(false)
+        setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
+      } else if (msg.type === 'btc_debug_log') {
+        const log = msg.log as string
+        // Write to a file via Electron or just dump to console + show in UI
+        const blob = new Blob([log], { type: 'text/plain' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'btc_debug.log'
+        a.click()
+        URL.revokeObjectURL(url)
+        const state = useStore.getState()
+        state.setProgressMsg(`Debug log downloaded (${log.split('\n').length} lines)`)
+        state.setLoading(false)
+        setTimeout(() => useStore.getState().setProgressMsg(''), 3000)
       } else if (msg.type === 'error') {
         const state = useStore.getState()
         state.setLoading(false)
@@ -314,6 +334,27 @@ export default function App() {
           setBtcAutoRefresh(true)
           // Subscribe via WebSocket — server opens PM WS + Kalshi polling
           wsRef.current.send(JSON.stringify({ type: 'btc', action: 'subscribe' }))
+          break
+        }
+
+        case 'DBG': {
+          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+            setErrorMsg('WebSocket not connected.')
+            return
+          }
+          const dbgSub = (parts[1] || '').toUpperCase()
+          if (dbgSub === 'ON' || dbgSub === 'OFF') {
+            wsRef.current.send(JSON.stringify({ type: 'btc_debug', action: dbgSub.toLowerCase() }))
+            setProgressMsg(`Debug logging ${dbgSub}...`)
+            setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
+          } else if (dbgSub === 'CLEAR') {
+            wsRef.current.send(JSON.stringify({ type: 'btc_debug', action: 'clear' }))
+            setProgressMsg('Clearing BTC debug log...')
+          } else {
+            setLoading(true)
+            setProgressMsg('Fetching BTC debug log...')
+            wsRef.current.send(JSON.stringify({ type: 'btc_debug', action: 'get' }))
+          }
           break
         }
 
