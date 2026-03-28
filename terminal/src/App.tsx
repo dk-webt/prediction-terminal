@@ -3,12 +3,13 @@ import { useStore } from './store'
 import StatusBar from './components/StatusBar'
 import PanelGrid from './components/PanelGrid'
 import CommandBar from './components/CommandBar'
+import { ConnectionManager } from './ws/ConnectionManager'
+import type { SocketStatus } from './ws/ConnectionManager'
 
 const API = 'http://localhost:8081'
-const WS_URL = 'ws://localhost:8081/ws/status'
 
 export default function App() {
-  const wsRef = useRef<WebSocket | null>(null)
+  const managerRef = useRef<ConnectionManager | null>(null)
   const pendingCmdRef = useRef<string>('')   // which command is awaiting WS done
   const prevCmdRef = useRef<string>('')      // last runnable command (for R)
   const cmdBarRef = useRef<HTMLInputElement | null>(null)
@@ -16,36 +17,41 @@ export default function App() {
   const {
     setLoading, setProgressMsg, setErrorMsg,
     setPmEvents, setKsEvents,
-    setCacheStats, setCategories, setActiveView, setActiveCategory, setLastCommand, setWsStatus,
+    setCacheStats, setCategories, setActiveView, setActiveCategory, setLastCommand,
     setCacheStatsBar, setSelectedIndex, setActivePanel, setDefaultLimit,
     setCenterView, navigateCenterHistory, jumpToCenterHistory,
     setBtcSnapshot, setBtcAutoRefresh,
     setFundKs, setFundPm, setFundPct,
     setPendingOrder,
     togglePanel,
+    setCmdWsStatus, setBtcWsStatus, setTradeWsStatus,
     activePanel, defaultLimit,
   } = useStore()
 
-  // ── WebSocket ────────────────────────────────────────────────────────────────
+  // ── Connection Manager ──────────────────────────────────────────────────────
 
-  const connectWs = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
+  useEffect(() => {
+    const onStatusChange = (socket: 'cmd' | 'btc' | 'trade', status: SocketStatus) => {
+      const s = useStore.getState()
+      if (socket === 'cmd') s.setCmdWsStatus(status)
+      else if (socket === 'btc') s.setBtcWsStatus(status)
+      else s.setTradeWsStatus(status)
 
-    setWsStatus('connecting')
-    const ws = new WebSocket(WS_URL)
-
-    ws.onopen = () => setWsStatus('connected')
-
-    ws.onclose = () => {
-      setWsStatus('disconnected')
-      wsRef.current = null
-      setTimeout(connectWs, 2000)
+      // Derive overall wsStatus for backward compat
+      const cmd = socket === 'cmd' ? status : s.cmdWsStatus
+      const btc = socket === 'btc' ? status : s.btcWsStatus
+      const trade = socket === 'trade' ? status : s.tradeWsStatus
+      if (cmd === 'connected' && btc === 'connected' && trade === 'connected') {
+        s.setWsStatus('connected')
+      } else if (cmd === 'disconnected' && btc === 'disconnected' && trade === 'disconnected') {
+        s.setWsStatus('disconnected')
+      } else {
+        s.setWsStatus('connecting')
+      }
     }
 
-    ws.onerror = () => setWsStatus('error')
-
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data as string)
+    // ── CMD message handler (ARB, CMP progress/done) ──────────────────────
+    const onCmdMessage = (msg: Record<string, unknown>) => {
       const cmd = pendingCmdRef.current
 
       if (msg.type === 'progress') {
@@ -55,26 +61,25 @@ export default function App() {
         state.setLoading(false)
         state.setProgressMsg('')
         if (cmd === 'ARB') {
-          if (msg.pm_events) state.setPmEvents(msg.pm_events)
-          if (msg.ks_events) state.setKsEvents(msg.ks_events)
+          if (msg.pm_events) state.setPmEvents(msg.pm_events as never[])
+          if (msg.ks_events) state.setKsEvents(msg.ks_events as never[])
           state.pushCenterSnapshot({
             view: 'ARB',
-            arbResults: msg.data,
+            arbResults: msg.data as never[],
             compareResults: state.compareResults,
             timestamp: new Date().toISOString(),
             label: state.lastCommand,
             resultCount: (msg.data as unknown[]).length,
           })
         } else if (cmd === 'CMP') {
-          if (msg.pm_events) state.setPmEvents(msg.pm_events)
-          if (msg.ks_events) state.setKsEvents(msg.ks_events)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const cmpData = msg.data as any[]
-          const resultCount = cmpData.reduce((s: number, cr: { market_matches: unknown[] }) => s + cr.market_matches.length, 0)
+          if (msg.pm_events) state.setPmEvents(msg.pm_events as never[])
+          if (msg.ks_events) state.setKsEvents(msg.ks_events as never[])
+          const cmpData = msg.data as { market_matches: unknown[] }[]
+          const resultCount = cmpData.reduce((s: number, cr) => s + cr.market_matches.length, 0)
           state.pushCenterSnapshot({
             view: 'CMP',
             arbResults: state.arbResults,
-            compareResults: cmpData,
+            compareResults: cmpData as never[],
             timestamp: new Date().toISOString(),
             label: state.lastCommand,
             resultCount,
@@ -82,12 +87,22 @@ export default function App() {
         }
         state.setSelectedIndex(null)
         pendingCmdRef.current = ''
-      } else if (msg.type === 'btc_update') {
+      } else if (msg.type === 'error') {
         const state = useStore.getState()
-        state.setBtcSnapshot(msg)
         state.setLoading(false)
         state.setProgressMsg('')
-        // Don't clear pendingCmdRef — BTC streams continuously
+        state.setErrorMsg(msg.msg as string)
+        pendingCmdRef.current = ''
+      }
+    }
+
+    // ── BTC message handler (streaming + debug) ───────────────────────────
+    const onBtcMessage = (msg: Record<string, unknown>) => {
+      if (msg.type === 'btc_update') {
+        const state = useStore.getState()
+        state.setBtcSnapshot(msg as never)
+        state.setLoading(false)
+        state.setProgressMsg('')
       } else if (msg.type === 'btc_stopped') {
         useStore.getState().setBtcAutoRefresh(false)
       } else if (msg.type === 'btc_debug_status') {
@@ -97,9 +112,8 @@ export default function App() {
         state.setLoading(false)
         setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
       } else if (msg.type === 'btc_debug_log') {
-        const log = msg.log as string
-        // Write to a file via Electron or just dump to console + show in UI
-        const blob = new Blob([log], { type: 'text/plain' })
+        const logText = msg.log as string
+        const blob = new Blob([logText], { type: 'text/plain' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
@@ -107,10 +121,15 @@ export default function App() {
         a.click()
         URL.revokeObjectURL(url)
         const state = useStore.getState()
-        state.setProgressMsg(`Debug log downloaded (${log.split('\n').length} lines)`)
+        state.setProgressMsg(`Debug log downloaded (${logText.split('\n').length} lines)`)
         state.setLoading(false)
         setTimeout(() => useStore.getState().setProgressMsg(''), 3000)
-      } else if (msg.type === 'btc_order_confirm') {
+      }
+    }
+
+    // ── Trade message handler (order confirm/result/cancel) ───────────────
+    const onTradeMessage = (msg: Record<string, unknown>) => {
+      if (msg.type === 'btc_order_confirm') {
         const state = useStore.getState()
         state.setPendingOrder({ order_id: msg.order_id as string, summary: msg.summary as string })
         state.setProgressMsg(`${msg.summary} — Type Y to confirm, N to cancel`)
@@ -131,17 +150,34 @@ export default function App() {
         state.setProgressMsg('Order cancelled')
         state.setLoading(false)
         setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
-      } else if (msg.type === 'error') {
-        const state = useStore.getState()
-        state.setLoading(false)
-        state.setProgressMsg('')
-        state.setErrorMsg(msg.msg as string)
-        pendingCmdRef.current = ''
       }
     }
 
-    wsRef.current = ws
-  }, [setWsStatus])
+    const manager = new ConnectionManager(API, {
+      onCmdMessage,
+      onBtcMessage,
+      onTradeMessage,
+      onStatusChange,
+    })
+    managerRef.current = manager
+
+    // Retry connection until server is up
+    const tryConnect = () => {
+      fetch(`${API}/health`)
+        .then(() => manager.connect())
+        .catch(() => setTimeout(tryConnect, 1500))
+    }
+    tryConnect()
+
+    return () => {
+      // Unsubscribe BTC on unmount
+      if (useStore.getState().btcAutoRefresh) {
+        manager.unsubscribeBtc()
+      }
+      manager.disconnect()
+      managerRef.current = null
+    }
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Cache stats polling ──────────────────────────────────────────────────────
 
@@ -149,29 +185,14 @@ export default function App() {
     fetch(`${API}/cache/stats`)
       .then((r) => r.json())
       .then((data) => useStore.getState().setCacheStatsBar(data))
-      .catch(() => {}) // silently ignore — server may not be ready yet
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
-    // Retry WS until server is up
-    const tryConnect = () => {
-      fetch(`${API}/health`)
-        .then(() => connectWs())
-        .catch(() => setTimeout(tryConnect, 1500))
-    }
-    tryConnect()
-
     fetchCacheStats()
     const interval = setInterval(fetchCacheStats, 30_000)
-    return () => {
-      clearInterval(interval)
-      // Unsubscribe BTC stream on unmount
-      if (useStore.getState().btcAutoRefresh && wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'btc', action: 'unsubscribe' }))
-      }
-      wsRef.current?.close()
-    }
-  }, [connectWs, fetchCacheStats])
+    return () => clearInterval(interval)
+  }, [fetchCacheStats])
 
   // ── Command runner ───────────────────────────────────────────────────────────
 
@@ -180,10 +201,10 @@ export default function App() {
       const trimmed = input.trim()
       if (!trimmed) return
 
+      const manager = managerRef.current
+
       const parts = trimmed.toUpperCase().split(/\s+/)
       const cmd = parts[0]
-      // Parse limit and category from remaining tokens in any order
-      // e.g. "PM SPORTS 10", "PM 10 SPORTS", "ARB 200", "ARB SPORTS"
       let limit = useStore.getState().defaultLimit
       let category: string | undefined = undefined
       let maxDays: number | undefined = undefined
@@ -197,16 +218,16 @@ export default function App() {
 
       useStore.getState().setErrorMsg('')
 
-      // Handle Y/N confirmation for pending orders
+      // Handle Y/N confirmation for pending orders → trade socket
       const pending = useStore.getState().pendingOrder
       if (pending && (cmd === 'Y' || cmd === 'N')) {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
+        if (manager?.tradeReady) {
           if (cmd === 'Y') {
-            wsRef.current.send(JSON.stringify({ type: 'btc_order_execute', order_id: pending.order_id }))
+            manager.sendTrade({ type: 'btc_order_execute', order_id: pending.order_id })
             setProgressMsg('Executing order...')
             setLoading(true)
           } else {
-            wsRef.current.send(JSON.stringify({ type: 'btc_order_cancel', order_id: pending.order_id }))
+            manager.sendTrade({ type: 'btc_order_cancel', order_id: pending.order_id })
           }
         }
         return
@@ -214,9 +235,7 @@ export default function App() {
 
       // Unsubscribe from BTC stream when navigating away
       if (cmd !== 'BTC' && useStore.getState().btcAutoRefresh) {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: 'btc', action: 'unsubscribe' }))
-        }
+        manager?.unsubscribeBtc()
         setBtcAutoRefresh(false)
       }
 
@@ -268,8 +287,8 @@ export default function App() {
         }
 
         case 'ARB': {
-          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-            setErrorMsg('WebSocket not connected. Retry in a moment.')
+          if (!manager?.cmdReady) {
+            setErrorMsg('Command socket not connected. Retry in a moment.')
             return
           }
           pendingCmdRef.current = 'ARB'
@@ -279,13 +298,13 @@ export default function App() {
           setActiveCategory(category ?? null)
           setProgressMsg('Starting arbitrage scan…')
           setSelectedIndex(null)
-          wsRef.current.send(JSON.stringify({ type: 'arb', limit, category: category ?? null, max_days: maxDays ?? null }))
+          manager.sendCmd({ type: 'arb', limit, category: category ?? null, max_days: maxDays ?? null })
           break
         }
 
         case 'CMP': {
-          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-            setErrorMsg('WebSocket not connected. Retry in a moment.')
+          if (!manager?.cmdReady) {
+            setErrorMsg('Command socket not connected. Retry in a moment.')
             return
           }
           pendingCmdRef.current = 'CMP'
@@ -295,7 +314,7 @@ export default function App() {
           setActiveCategory(category ?? null)
           setProgressMsg('Starting comparison…')
           setSelectedIndex(null)
-          wsRef.current.send(JSON.stringify({ type: 'compare', limit, category: category ?? null, max_days: maxDays ?? null }))
+          manager.sendCmd({ type: 'compare', limit, category: category ?? null, max_days: maxDays ?? null })
           break
         }
 
@@ -392,16 +411,15 @@ export default function App() {
 
         case 'BUY':
         case 'SELL': {
-          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-            setErrorMsg('WebSocket not connected.')
+          if (!manager?.tradeReady) {
+            setErrorMsg('Trade socket not connected.')
             return
           }
-          // BUY KS YES 10 0.50 | BUY PM UP 10 0.50 | SELL KS NO 5 | BUY KS YES 10 MKT
           const action = cmd.toLowerCase() as 'buy' | 'sell'
-          const platToken = parts[1] // KS or PM
-          const sideToken = parts[2] // YES/NO or UP/DOWN
+          const platToken = parts[1]
+          const sideToken = parts[2]
           const countStr = parts[3]
-          const priceOrMkt = parts[4] // price or "MKT" or undefined
+          const priceOrMkt = parts[4]
 
           if (!platToken || !sideToken || !countStr) {
             setErrorMsg(`Usage: ${cmd} KS/PM YES/NO/UP/DOWN <count> [price|MKT]`)
@@ -425,7 +443,6 @@ export default function App() {
             break
           }
 
-          // Resolve platform, side, ticker/token_id from current BTC snapshot
           const snap = useStore.getState().btcSnapshot
           if (!snap) {
             setErrorMsg('No BTC data. Run BTC first.')
@@ -458,13 +475,13 @@ export default function App() {
             break
           }
 
-          wsRef.current.send(JSON.stringify({
+          manager.sendTrade({
             type: 'btc_order', platform, action, side,
             count: orderCount,
             price: orderPrice ?? null,
             order_type: orderType,
             ticker, token_id: tokenId,
-          }))
+          })
           break
         }
 
@@ -511,8 +528,8 @@ export default function App() {
         }
 
         case 'BTC': {
-          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-            setErrorMsg('WebSocket not connected. Retry in a moment.')
+          if (!manager?.btcReady) {
+            setErrorMsg('BTC socket not connected. Retry in a moment.')
             return
           }
           setActiveView('BTC')
@@ -520,28 +537,27 @@ export default function App() {
           setLoading(true)
           setProgressMsg('Connecting to BTC 15-min live stream...')
           setBtcAutoRefresh(true)
-          // Subscribe via WebSocket — server opens PM WS + Kalshi polling
-          wsRef.current.send(JSON.stringify({ type: 'btc', action: 'subscribe' }))
+          manager.subscribeBtc()
           break
         }
 
         case 'DBG': {
-          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-            setErrorMsg('WebSocket not connected.')
+          if (!manager?.btcReady) {
+            setErrorMsg('BTC socket not connected.')
             return
           }
           const dbgSub = (parts[1] || '').toUpperCase()
           if (dbgSub === 'ON' || dbgSub === 'OFF') {
-            wsRef.current.send(JSON.stringify({ type: 'btc_debug', action: dbgSub.toLowerCase() }))
+            manager.sendBtc({ type: 'btc_debug', action: dbgSub.toLowerCase() })
             setProgressMsg(`Debug logging ${dbgSub}...`)
             setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
           } else if (dbgSub === 'CLEAR') {
-            wsRef.current.send(JSON.stringify({ type: 'btc_debug', action: 'clear' }))
+            manager.sendBtc({ type: 'btc_debug', action: 'clear' })
             setProgressMsg('Clearing BTC debug log...')
           } else {
             setLoading(true)
             setProgressMsg('Fetching BTC debug log...')
-            wsRef.current.send(JSON.stringify({ type: 'btc_debug', action: 'get' }))
+            manager.sendBtc({ type: 'btc_debug', action: 'get' })
           }
           break
         }
@@ -584,19 +600,16 @@ export default function App() {
         if (!inInput) {
           e.preventDefault()
           const s = useStore.getState()
-          // 4 panels: 0=PM, 1=KS, 2=center, 3=detail
           const next = e.shiftKey
-            ? ((s.activePanel + 3) % 4) as 0 | 1 | 2 | 3   // backward
-            : ((s.activePanel + 1) % 4) as 0 | 1 | 2 | 3   // forward
+            ? ((s.activePanel + 3) % 4) as 0 | 1 | 2 | 3
+            : ((s.activePanel + 1) % 4) as 0 | 1 | 2 | 3
           s.setActivePanel(next)
-          s.setSelectedIndex(null)   // reset row selection when switching panels
+          s.setSelectedIndex(null)
         }
       } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         if (!inInput) {
           e.preventDefault()
           const s = useStore.getState()
-          // Derive navigable count from activePanel, not activeView
-          // so Tab focus drives ↑↓ independently of what the center panel shows
           let navCount = 0
           if (s.activePanel === 0) navCount = s.pmEvents.length
           else if (s.activePanel === 1) navCount = s.ksEvents.length
@@ -605,7 +618,6 @@ export default function App() {
             else if (s.activeView === 'CMP')
               navCount = s.compareResults.reduce((sum, cr) => sum + cr.market_matches.length, 0)
           }
-          // panel 3 (detail) has no navigable rows
           if (!navCount) return
           const cur = s.selectedIndex ?? -1
           const next =

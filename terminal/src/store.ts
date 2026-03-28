@@ -11,6 +11,7 @@ import type {
 export type View = 'IDLE' | 'PM' | 'KS' | 'ARB' | 'CMP' | 'HELP' | 'CACHE' | 'CATS' | 'HIST' | 'BTC'
 export type CenterView = 'IDLE' | 'ARB' | 'CMP' | 'HELP' | 'CACHE' | 'CATS' | 'HIST' | 'BTC'
 export type WsStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
+export type SocketStatus = 'connecting' | 'connected' | 'disconnected'
 
 export type CenterSnapshot = {
   view: 'ARB' | 'CMP'
@@ -58,6 +59,9 @@ interface TerminalState {
   lastCommand: string
   defaultLimit: number
   wsStatus: WsStatus
+  cmdWsStatus: SocketStatus
+  btcWsStatus: SocketStatus
+  tradeWsStatus: SocketStatus
 
   // Setters
   setPmEvents: (v: NormalizedEvent[]) => void
@@ -87,6 +91,9 @@ interface TerminalState {
   setLastCommand: (v: string) => void
   setDefaultLimit: (v: number) => void
   setWsStatus: (v: WsStatus) => void
+  setCmdWsStatus: (v: SocketStatus) => void
+  setBtcWsStatus: (v: SocketStatus) => void
+  setTradeWsStatus: (v: SocketStatus) => void
   setCenterView: (v: CenterView) => void
   pushCenterSnapshot: (snap: CenterSnapshot) => void
   navigateCenterHistory: (delta: -1 | 1) => void
@@ -120,6 +127,9 @@ export const useStore = create<TerminalState>((set) => ({
   lastCommand: '',
   defaultLimit: 200,
   wsStatus: 'connecting',
+  cmdWsStatus: 'disconnected' as SocketStatus,
+  btcWsStatus: 'disconnected' as SocketStatus,
+  tradeWsStatus: 'disconnected' as SocketStatus,
   centerView: 'IDLE',
   centerHistory: [],
   centerHistoryIndex: -1,
@@ -155,6 +165,9 @@ export const useStore = create<TerminalState>((set) => ({
   setLastCommand: (lastCommand) => set({ lastCommand }),
   setDefaultLimit: (defaultLimit) => set({ defaultLimit }),
   setWsStatus: (wsStatus) => set({ wsStatus }),
+  setCmdWsStatus: (cmdWsStatus) => set({ cmdWsStatus }),
+  setBtcWsStatus: (btcWsStatus) => set({ btcWsStatus }),
+  setTradeWsStatus: (tradeWsStatus) => set({ tradeWsStatus }),
   setCenterView: (centerView) => set({ centerView }),
 
   pushCenterSnapshot: (snap) => set((state) => {

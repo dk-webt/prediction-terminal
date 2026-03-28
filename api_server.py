@@ -21,9 +21,12 @@ WebSocket protocol (ARB, compare):
 import asyncio
 import dataclasses
 import queue as sync_queue
+import logging
 import sys
 import os
 from typing import Any, Callable
+
+log = logging.getLogger(__name__)
 
 # Ensure sibling modules (clients/, comparator.py, etc.) are importable
 sys.path.insert(0, os.path.dirname(__file__))
@@ -354,21 +357,57 @@ async def clear_cache_endpoint():
     clear_cache()
 
 
-# ── WebSocket endpoint ─────────────────────────────────────────────────────────
+# ── WebSocket endpoints ────────────────────────────────────────────────────────
+
+# Module-level BTC stream — shared across /ws/btc connections
+_btc_stream = None            # BtcStreamManager instance
+_btc_subscribers: set = set() # set of WebSocket objects listening for updates
 
 
-@app.websocket("/ws/status")
-async def websocket_status(websocket: WebSocket):
+async def _btc_broadcast(snapshot: dict):
+    """Push BTC update to all connected /ws/btc subscribers."""
+    msg = {"type": "btc_update", **snapshot}
+    dead = []
+    for ws in _btc_subscribers:
+        try:
+            await ws.send_json(msg)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        _btc_subscribers.discard(ws)
+
+
+async def _btc_ensure_started():
+    """Start the BTC stream if not already running."""
+    global _btc_stream
+    if _btc_stream is not None:
+        return
+    from clients.btc_watcher import BtcStreamManager
+    _btc_stream = BtcStreamManager(on_update=_btc_broadcast)
+    await _btc_stream.start()
+    log.info("BTC stream started (module-level)")
+
+
+async def _btc_stop():
+    """Stop the BTC stream."""
+    global _btc_stream
+    if _btc_stream is not None:
+        await _btc_stream.stop()
+        _btc_stream = None
+        log.info("BTC stream stopped")
+
+
+# ── /ws/cmd — Commands: ARB, CMP, CACHE ──────────────────────────────────────
+
+@app.websocket("/ws/cmd")
+async def websocket_cmd(websocket: WebSocket):
     await websocket.accept()
-    btc_stream = None  # BtcStreamManager instance, if active
-    pending_orders: dict = {}  # order_id -> order details for confirmation flow
     try:
         while True:
             data = await websocket.receive_json()
             cmd = data.get("type", "")
             limit = int(data.get("limit", 200))
-
-            category = data.get("category") or None  # None when absent or ""
+            category = data.get("category") or None
 
             if cmd == "arb":
                 await _stream_ws(
@@ -391,23 +430,41 @@ async def websocket_status(websocket: WebSocket):
                     max_days=data.get("max_days"),
                     refresh_cache=bool(data.get("refresh_cache", False)),
                 )
-            elif cmd == "btc":
+            else:
+                await websocket.send_json({"type": "error", "msg": f"Unknown cmd: {cmd}"})
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        try:
+            await websocket.send_json({"type": "error", "msg": str(exc)})
+        except Exception:
+            pass
+
+
+# ── /ws/btc — BTC price streaming + debug ─────────────────────────────────────
+
+@app.websocket("/ws/btc")
+async def websocket_btc(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_json()
+            cmd = data.get("type", "")
+
+            if cmd == "btc":
                 action = data.get("action", "subscribe")
-                if action == "subscribe" and btc_stream is None:
-                    from clients.btc_watcher import BtcStreamManager
-
-                    async def _btc_push(snapshot: dict):
-                        try:
-                            await websocket.send_json({"type": "btc_update", **snapshot})
-                        except Exception:
-                            pass
-
-                    btc_stream = BtcStreamManager(on_update=_btc_push)
-                    await btc_stream.start()
-                elif action == "unsubscribe" and btc_stream is not None:
-                    await btc_stream.stop()
-                    btc_stream = None
+                if action == "subscribe":
+                    _btc_subscribers.add(websocket)
+                    await _btc_ensure_started()
+                    log.info("BTC subscriber added (total: %d)", len(_btc_subscribers))
+                elif action == "unsubscribe":
+                    _btc_subscribers.discard(websocket)
                     await websocket.send_json({"type": "btc_stopped"})
+                    # Stop stream if no more subscribers
+                    if not _btc_subscribers and _btc_stream is not None:
+                        await _btc_stop()
+
             elif cmd == "btc_debug":
                 action = data.get("action", "get")
                 if action == "on":
@@ -426,7 +483,34 @@ async def websocket_status(websocket: WebSocket):
                 elif action == "clear":
                     open(BTC_DEBUG_LOG, "w").close()
                     await websocket.send_json({"type": "btc_debug_log", "log": "(cleared)"})
-            elif cmd == "btc_order":
+            else:
+                await websocket.send_json({"type": "error", "msg": f"Unknown btc cmd: {cmd}"})
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        try:
+            await websocket.send_json({"type": "error", "msg": str(exc)})
+        except Exception:
+            pass
+    finally:
+        _btc_subscribers.discard(websocket)
+        if not _btc_subscribers and _btc_stream is not None:
+            await _btc_stop()
+
+
+# ── /ws/trade — Order confirmation + execution ───────────────────────────────
+
+@app.websocket("/ws/trade")
+async def websocket_trade(websocket: WebSocket):
+    await websocket.accept()
+    pending_orders: dict = {}
+    try:
+        while True:
+            data = await websocket.receive_json()
+            cmd = data.get("type", "")
+
+            if cmd == "btc_order":
                 import uuid as _uuid
                 order_id = str(_uuid.uuid4())[:8]
                 platform = data.get("platform", "")
@@ -438,7 +522,6 @@ async def websocket_status(websocket: WebSocket):
                 ticker = data.get("ticker", "")
                 token_id = data.get("token_id", "")
 
-                # Build summary
                 plat_label = "KS" if platform == "kalshi" else "PM"
                 price_str = f" @ ${price:.2f}" if price else " MKT"
                 total = f" (${count * price:.2f} total)" if price else ""
@@ -459,8 +542,12 @@ async def websocket_status(websocket: WebSocket):
                 order_id = data.get("order_id", "")
                 order = pending_orders.pop(order_id, None)
                 if not order:
+                    log.warning("ORDER %s: not found or expired", order_id)
                     await websocket.send_json({"type": "btc_order_result", "success": False, "error": "Order expired or not found"})
                 else:
+                    log.info("ORDER %s: executing %s %s %s x%d @ %s",
+                             order_id, order["platform"], order["action"],
+                             order["side"], order["count"], order.get("price", "MKT"))
                     try:
                         if order["platform"] == "kalshi":
                             from clients.executor import place_kalshi_order
@@ -477,8 +564,13 @@ async def websocket_status(websocket: WebSocket):
                                 order["token_id"], pm_side,
                                 order["count"], order["price"], order["order_type"],
                             )
+                        if result.get("success"):
+                            log.info("ORDER %s: success — %s", order_id, result.get("data", ""))
+                        else:
+                            log.warning("ORDER %s: failed — %s", order_id, result.get("error", "unknown"))
                         await websocket.send_json({"type": "btc_order_result", **result})
                     except Exception as exc:
+                        log.error("ORDER %s: exception — %s", order_id, exc, exc_info=True)
                         await websocket.send_json({"type": "btc_order_result", "success": False, "error": str(exc)})
 
             elif cmd == "btc_order_cancel":
@@ -487,7 +579,7 @@ async def websocket_status(websocket: WebSocket):
                 await websocket.send_json({"type": "btc_order_cancelled"})
 
             else:
-                await websocket.send_json({"type": "error", "msg": f"Unknown WS command: {cmd}"})
+                await websocket.send_json({"type": "error", "msg": f"Unknown trade cmd: {cmd}"})
 
     except WebSocketDisconnect:
         pass
@@ -496,10 +588,6 @@ async def websocket_status(websocket: WebSocket):
             await websocket.send_json({"type": "error", "msg": str(exc)})
         except Exception:
             pass
-    finally:
-        # Clean up BTC stream on disconnect
-        if btc_stream is not None:
-            await btc_stream.stop()
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

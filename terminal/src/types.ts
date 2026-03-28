@@ -100,6 +100,8 @@ export interface BtcSnapshot {
   streaming?: boolean
   kalshi_mode?: 'websocket' | 'polling'
   rolling?: boolean
+  kalshi_last_update?: string
+  polymarket_last_update?: string
 }
 
 export interface OrderConfirmation {

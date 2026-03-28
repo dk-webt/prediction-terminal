@@ -1,4 +1,52 @@
+import { useState, useEffect } from 'react'
 import { useStore } from '../store'
+import type { BtcSnapshot } from '../types'
+
+const STALE_THRESHOLD_MS = 10_000  // 10 seconds
+
+function useLiveStatus(snapshot: BtcSnapshot) {
+  const btcWsStatus = useStore((s) => s.btcWsStatus)
+  const [now, setNow] = useState(Date.now())
+
+  // Tick every 2s to re-evaluate staleness
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 2000)
+    return () => clearInterval(id)
+  }, [])
+
+  if (btcWsStatus !== 'connected') {
+    return { label: 'DISCONNECTED', color: 'var(--red)' }
+  }
+
+  const ksAge = snapshot.kalshi_last_update
+    ? now - new Date(snapshot.kalshi_last_update).getTime()
+    : Infinity
+  const pmAge = snapshot.polymarket_last_update
+    ? now - new Date(snapshot.polymarket_last_update).getTime()
+    : Infinity
+
+  if (ksAge > STALE_THRESHOLD_MS || pmAge > STALE_THRESHOLD_MS) {
+    return { label: 'STALE', color: 'var(--amber)' }
+  }
+
+  return { label: 'LIVE', color: 'var(--green)' }
+}
+
+function BtcFooter({ snapshot }: { snapshot: BtcSnapshot }) {
+  const { label, color } = useLiveStatus(snapshot)
+
+  return (
+    <div className="btc-footer">
+      <span className="btc-dim">
+        Last updated: {new Date(snapshot.timestamp).toLocaleTimeString()}
+        {' | '}
+        <span style={{ color }}>{label}</span>
+        {' — PM: WebSocket, KS: '}
+        {snapshot.kalshi_mode === 'websocket' ? 'WebSocket' : 'polling 3s'}
+      </span>
+    </div>
+  )
+}
 
 function fmtPrice(v: number | undefined) {
   if (v === undefined || v === 0) return '---'
@@ -232,15 +280,7 @@ export default function BtcPanel() {
         </div>
       </div>
 
-      <div className="btc-footer">
-        <span className="btc-dim">
-          Last updated: {new Date(btcSnapshot.timestamp).toLocaleTimeString()}
-          {' | '}
-          {btcSnapshot.streaming
-            ? <><span style={{ color: 'var(--green)' }}>LIVE</span> — PM: WebSocket, KS: {btcSnapshot.kalshi_mode === 'websocket' ? 'WebSocket' : 'polling 3s'}</>
-            : 'Snapshot (not streaming)'}
-        </span>
-      </div>
+      <BtcFooter snapshot={btcSnapshot} />
     </div>
   )
 }

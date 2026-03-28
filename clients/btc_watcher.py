@@ -421,6 +421,8 @@ class BtcStreamManager:
         self._pm_token_ids: list[str] = []
         self._current_slug: str = ""
         self._rolling = False  # True while window roll is in progress
+        self._ks_last_update: str = ""   # ISO timestamp of last Kalshi data
+        self._pm_last_update: str = ""   # ISO timestamp of last Polymarket data
 
         # Signals WS loops to reconnect with new tokens/tickers
         self._pm_reconnect = asyncio.Event()
@@ -437,12 +439,15 @@ class BtcStreamManager:
         self._kalshi_data = initial["kalshi"]
         self._pm_data = initial["polymarket"]
 
+        now_iso = datetime.now(timezone.utc).isoformat()
         if self._kalshi_data and not self._kalshi_data.get("error"):
             self._kalshi_ticker = self._kalshi_data.get("ticker", "")
+            self._ks_last_update = now_iso
 
         if self._pm_data and not self._pm_data.get("error"):
             self._pm_token_ids = self._pm_data.get("token_ids", [])
             self._current_slug = self._pm_data.get("slug", "")
+            self._pm_last_update = now_iso
 
         log.info("INIT: snapshot in %.0fms | slug=%s ks_ticker=%s pm_tokens=%d pm_strike=%s",
                  (t1 - t0) * 1000, self._current_slug, self._kalshi_ticker,
@@ -489,6 +494,8 @@ class BtcStreamManager:
             "streaming": True,
             "kalshi_mode": "websocket" if kalshi_ws_available() else "polling",
             "rolling": self._rolling,
+            "kalshi_last_update": self._ks_last_update,
+            "polymarket_last_update": self._pm_last_update,
         }
         try:
             await self._on_update(snapshot)
@@ -578,16 +585,17 @@ class BtcStreamManager:
 
             if msg_type == "ticker":
                 self._apply_kalshi_ticker(data)
+                self._ks_last_update = datetime.now(timezone.utc).isoformat()
                 await self._push_update()
 
             elif msg_type == "orderbook_snapshot":
                 self._apply_kalshi_orderbook_snapshot(data)
+                self._ks_last_update = datetime.now(timezone.utc).isoformat()
                 await self._push_update()
 
             elif msg_type == "orderbook_delta":
-                # Delta updates are incremental — for simplicity, just update
-                # bid/ask from the delta's price+side info
                 self._apply_kalshi_orderbook_delta(data)
+                self._ks_last_update = datetime.now(timezone.utc).isoformat()
                 await self._push_update()
 
             elif msg_type == "error":
@@ -672,6 +680,7 @@ class BtcStreamManager:
                         log.info("KS poll: new ticker %s (was %s)", new_ticker, self._kalshi_ticker)
                     self._kalshi_data = data
                     self._kalshi_ticker = new_ticker
+                    self._ks_last_update = datetime.now(timezone.utc).isoformat()
                     await self._push_update()
             except Exception as e:
                 log.debug("Kalshi poll error: %s", e)
@@ -779,6 +788,7 @@ class BtcStreamManager:
                     updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
 
             if updated:
+                self._pm_last_update = datetime.now(timezone.utc).isoformat()
                 await self._push_update()
 
     def _apply_pm_price(self, asset_id: str, best_bid: float, best_ask: float) -> bool:
