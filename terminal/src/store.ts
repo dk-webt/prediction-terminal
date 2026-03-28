@@ -31,6 +31,9 @@ interface TerminalState {
   categories: { polymarket: string[]; kalshi: string[] } | null
   btcSnapshot: BtcSnapshot | null
   btcAutoRefresh: boolean
+  fundKs: number       // available cash on Kalshi
+  fundPm: number       // available cash on Polymarket
+  fundPct: number      // percentage of funds to use (0-1)
 
   // UI state
   activeView: View
@@ -61,6 +64,9 @@ interface TerminalState {
   setCategories: (v: { polymarket: string[]; kalshi: string[] } | null) => void
   setBtcSnapshot: (v: BtcSnapshot | null) => void
   setBtcAutoRefresh: (v: boolean) => void
+  setFundKs: (v: number) => void
+  setFundPm: (v: number) => void
+  setFundPct: (v: number) => void
   setActiveView: (v: View) => void
   setActiveCategory: (v: string | null) => void
   setSelectedIndex: (v: number | null) => void
@@ -87,6 +93,9 @@ export const useStore = create<TerminalState>((set) => ({
   categories: null,
   btcSnapshot: null,
   btcAutoRefresh: false,
+  fundKs: 0,
+  fundPm: 0,
+  fundPct: 1.0,
   activeView: 'IDLE',
   activeCategory: null,
   selectedIndex: null,
@@ -110,6 +119,9 @@ export const useStore = create<TerminalState>((set) => ({
   setCategories: (categories) => set({ categories }),
   setBtcSnapshot: (btcSnapshot) => set({ btcSnapshot }),
   setBtcAutoRefresh: (btcAutoRefresh) => set({ btcAutoRefresh }),
+  setFundKs: (fundKs) => set({ fundKs }),
+  setFundPm: (fundPm) => set({ fundPm }),
+  setFundPct: (fundPct) => set({ fundPct }),
   setActiveView: (activeView) => set({ activeView }),
   setActiveCategory: (activeCategory) => set({ activeCategory }),
   setSelectedIndex: (selectedIndex) => set({ selectedIndex }),

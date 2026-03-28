@@ -20,6 +20,7 @@ export default function App() {
     setCacheStatsBar, setSelectedIndex, setActivePanel, setDefaultLimit,
     setCenterView, navigateCenterHistory, jumpToCenterHistory,
     setBtcSnapshot, setBtcAutoRefresh,
+    setFundKs, setFundPm, setFundPct,
     activePanel, defaultLimit,
   } = useStore()
 
@@ -300,6 +301,28 @@ export default function App() {
             setProgressMsg(`Default limit set to ${limit}`)
             setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
           }
+          break
+        }
+
+        case 'FUND': {
+          const sub = (parts[1] || '').toUpperCase()
+          const val = parseFloat(parts[2] || '')
+          if (sub === 'KS' && !isNaN(val) && val >= 0) {
+            setFundKs(val)
+            setProgressMsg(`Kalshi funds set to $${val.toFixed(2)}`)
+          } else if (sub === 'PM' && !isNaN(val) && val >= 0) {
+            setFundPm(val)
+            setProgressMsg(`Polymarket funds set to $${val.toFixed(2)}`)
+          } else if (sub === 'PCT' && !isNaN(val) && val >= 0 && val <= 1) {
+            setFundPct(val)
+            setProgressMsg(`Fund usage set to ${(val * 100).toFixed(0)}%`)
+          } else if (!sub) {
+            const s = useStore.getState()
+            setProgressMsg(`KS: $${s.fundKs.toFixed(2)} | PM: $${s.fundPm.toFixed(2)} | Use: ${(s.fundPct * 100).toFixed(0)}%`)
+          } else {
+            setErrorMsg('Usage: FUND KS <amount> | FUND PM <amount> | FUND PCT <0-1>')
+          }
+          setTimeout(() => { useStore.getState().setProgressMsg(''); useStore.getState().setErrorMsg('') }, 3000)
           break
         }
 

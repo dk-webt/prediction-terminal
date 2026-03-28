@@ -171,6 +171,7 @@ function fmtStrike(v: number | undefined) {
 function BtcDetail({ snap }: { snap: BtcSnapshot }) {
   const ks = snap.kalshi
   const pm = snap.polymarket
+  const { fundKs, fundPm, fundPct } = useStore()
 
   if (!ks || ks.error || !pm || pm.error) {
     return (
@@ -191,19 +192,37 @@ function BtcDetail({ snap }: { snap: BtcSnapshot }) {
 
   const strikeGap = (ksStrike && pmStrike) ? ksStrike - pmStrike : null
 
+  // Available funds after percentage
+  const ksAvail = fundKs * fundPct
+  const pmAvail = fundPm * fundPct
+  const hasFunds = ksAvail > 0 && pmAvail > 0
+
   // Option 1: Buy Yes KS + Buy No (Down) PM
   const cost1 = ksYesAsk + pmDownAsk
   const profit1 = cost1 > 0 && cost1 < 1.0 ? (1.0 - cost1) : null
   const noGap1 = (ksStrike && pmStrike) ? (ksStrike < pmStrike ? 'Yes' : 'No') : null
+  const contracts1 = (hasFunds && ksYesAsk > 0 && pmDownAsk > 0)
+    ? Math.min(Math.floor(ksAvail / ksYesAsk), Math.floor(pmAvail / pmDownAsk))
+    : null
 
   // Option 2: Buy No KS + Buy Yes (Up) PM
   const cost2 = ksNoAsk + pmUpAsk
   const profit2 = cost2 > 0 && cost2 < 1.0 ? (1.0 - cost2) : null
   const noGap2 = (ksStrike && pmStrike) ? (pmStrike < ksStrike ? 'Yes' : 'No') : null
+  const contracts2 = (hasFunds && ksNoAsk > 0 && pmUpAsk > 0)
+    ? Math.min(Math.floor(ksAvail / ksNoAsk), Math.floor(pmAvail / pmUpAsk))
+    : null
 
   return (
     <div className="detail-body">
       <Label>SYNTHETIC OPTIONS</Label>
+
+      <Label>AVAILABLE FUNDS</Label>
+      {hasFunds ? (
+        <Val>KS: ${ksAvail.toFixed(2)} | PM: ${pmAvail.toFixed(2)} ({(fundPct * 100).toFixed(0)}%)</Val>
+      ) : (
+        <Val><span style={{ color: 'var(--gray)' }}>Set with FUND KS/PM/PCT</span></Val>
+      )}
 
       <Label>STRIKE PRICES</Label>
       <Val>KS: {fmtStrike(ksStrike)}</Val>
@@ -235,6 +254,10 @@ function BtcDetail({ snap }: { snap: BtcSnapshot }) {
       <Val className={noGap1 === 'Yes' ? 'detail-profit' : ''}>
         {noGap1 ?? '--'}
       </Val>
+      <Label>CONTRACTS</Label>
+      <Val className={contracts1 ? 'detail-profit' : ''}>
+        {contracts1 !== null ? contracts1.toLocaleString() : '--'}
+      </Val>
 
       <div style={{ height: 8 }} />
 
@@ -254,6 +277,10 @@ function BtcDetail({ snap }: { snap: BtcSnapshot }) {
       <Label>NO-GAP</Label>
       <Val className={noGap2 === 'Yes' ? 'detail-profit' : ''}>
         {noGap2 ?? '--'}
+      </Val>
+      <Label>CONTRACTS</Label>
+      <Val className={contracts2 ? 'detail-profit' : ''}>
+        {contracts2 !== null ? contracts2.toLocaleString() : '--'}
       </Val>
     </div>
   )
