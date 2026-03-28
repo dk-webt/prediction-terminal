@@ -420,6 +420,7 @@ class BtcStreamManager:
         self._pm_data: dict | None = None
         self._pm_token_ids: list[str] = []
         self._current_slug: str = ""
+        self._rolling = False  # True while window roll is in progress
 
         # Signals WS loops to reconnect with new tokens/tickers
         self._pm_reconnect = asyncio.Event()
@@ -487,6 +488,7 @@ class BtcStreamManager:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "streaming": True,
             "kalshi_mode": "websocket" if kalshi_ws_available() else "polling",
+            "rolling": self._rolling,
         }
         try:
             await self._on_update(snapshot)
@@ -891,6 +893,7 @@ class BtcStreamManager:
             old_ks_ticker = self._kalshi_ticker
             self._pm_data = None
             self._pm_token_ids = []
+            self._rolling = True
 
             pm_ok = False
             ks_ok = False
@@ -953,6 +956,7 @@ class BtcStreamManager:
                 await self._push_update(force=True)
                 await asyncio.sleep(self.ROLL_RETRY_INTERVAL)
 
+            self._rolling = False
             roll_elapsed = time.monotonic() - roll_start
             log.info("ROLL DONE: pm_ok=%s ks_ok=%s total=%.0fms", pm_ok, ks_ok, roll_elapsed * 1000)
 

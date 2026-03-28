@@ -99,6 +99,7 @@ export interface BtcSnapshot {
   timestamp: string
   streaming?: boolean
   kalshi_mode?: 'websocket' | 'polling'
+  rolling?: boolean
 }
 
 // Extend Window for Electron bridge

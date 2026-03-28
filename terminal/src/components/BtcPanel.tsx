@@ -56,10 +56,15 @@ export default function BtcPanel() {
 
   const ks = btcSnapshot.kalshi
   const pm = btcSnapshot.polymarket
+  const rolling = btcSnapshot.rolling
 
-  // Determine window times from whichever platform has data
-  const windowStart = ks?.open_time || pm?.event_start_time || ''
-  const windowEnd = ks?.close_time || pm?.end_time || ''
+  // During roll, prefer PM times (PM updates faster); otherwise prefer KS
+  const windowStart = rolling
+    ? (pm?.event_start_time || '')
+    : (ks?.open_time || pm?.event_start_time || '')
+  const windowEnd = rolling
+    ? (pm?.end_time || '')
+    : (ks?.close_time || pm?.end_time || '')
 
   return (
     <div className="btc-panel">
@@ -67,17 +72,19 @@ export default function BtcPanel() {
       <div className="btc-header">
         <span className="btc-title">BTC 15-MIN BINARY OPTIONS</span>
         <span className="btc-window">
-          {fmtTime(windowStart)} - {fmtTime(windowEnd)}
+          {rolling && !pm ? 'ROLLING...' : <>{fmtTime(windowStart)} - {fmtTime(windowEnd)}</>}
         </span>
-        <span className="btc-remaining">
-          {timeRemaining(windowEnd)}
+        <span className="btc-remaining" style={rolling ? { color: 'var(--amber)' } : undefined}>
+          {rolling && !pm ? 'SWITCHING' : timeRemaining(windowEnd)}
         </span>
       </div>
 
       <div className="btc-grid">
         {/* Kalshi */}
         <div className="btc-platform-card">
-          <div className="btc-platform-header">KALSHI</div>
+          <div className="btc-platform-header">
+            KALSHI{rolling && ks ? ' (waiting for new contract...)' : ''}
+          </div>
           {ks?.error ? (
             <div className="btc-error">{ks.error}</div>
           ) : ks ? (
