@@ -16,7 +16,7 @@ import calendar
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -192,6 +192,34 @@ def fetch_kalshi_btc_15m() -> dict | None:
 PM_GAMMA = "https://gamma-api.polymarket.com"
 PM_CLOB = "https://clob.polymarket.com"
 PM_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
+PM_CRYPTO_PRICE = "https://polymarket.com/api/crypto/crypto-price"
+
+
+def fetch_pm_strike_price(event_start_time: str, end_time: str) -> float | None:
+    """
+    Fetch the actual Chainlink BTC/USD opening price (priceToBeat) from
+    Polymarket's internal crypto-price API.
+    """
+    try:
+        resp = requests.get(
+            PM_CRYPTO_PRICE,
+            params={
+                "symbol": "BTC",
+                "eventStartTime": event_start_time,
+                "variant": "fifteen",
+                "endDate": end_time,
+            },
+            headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        price = data.get("openPrice")
+        if price is not None and isinstance(price, (int, float)):
+            return float(price)
+    except Exception as e:
+        log.debug("Failed to fetch PM strike price: %s", e)
+    return None
 
 
 def _current_15m_slug() -> str:
@@ -296,10 +324,16 @@ def fetch_polymarket_btc_15m() -> dict | None:
 
     fee_schedule = market.get("feeSchedule")
 
+    # Fetch actual Chainlink opening price from Polymarket's crypto-price API
+    event_start = market.get("eventStartTime", "")
+    end_date = market.get("endDate", "")
+    strike = fetch_pm_strike_price(event_start, end_date) if event_start else None
+
     return {
         "platform": "polymarket",
         "slug": slug,
         "title": title,
+        "floor_strike": strike,
         "event_start_time": market.get("eventStartTime", ""),
         "end_time": market.get("endDate", ""),
         "up_ask": up_ask,
@@ -361,8 +395,9 @@ class BtcStreamManager:
     KALSHI_POLL_INTERVAL = 3     # seconds — REST fallback polling rate
     PM_PING_INTERVAL = 8         # seconds between PM WS PING heartbeats
     PM_INACTIVITY_TIMEOUT = 120  # seconds before force-reconnect
-    WINDOW_CHECK_INTERVAL = 30   # seconds between window-roll checks
     MIN_PUSH_INTERVAL = 0.5      # seconds — throttle pushes to frontend
+    ROLL_RETRY_INTERVAL = 3      # seconds between retries when new contract not ready
+    ROLL_MAX_RETRIES = 10        # max retries before giving up on a roll
 
     def __init__(self, on_update):
         self._on_update = on_update
@@ -376,6 +411,10 @@ class BtcStreamManager:
         self._pm_data: dict | None = None
         self._pm_token_ids: list[str] = []
         self._current_slug: str = ""
+
+        # Signals WS loops to reconnect with new tokens/tickers
+        self._pm_reconnect = asyncio.Event()
+        self._ks_reconnect = asyncio.Event()
 
     async def start(self):
         """Start streaming. Performs initial REST fetch, then opens live channels."""
@@ -456,7 +495,10 @@ class BtcStreamManager:
                 return
 
             try:
-                log.info("Connecting to Kalshi WS for %s", self._kalshi_ticker)
+                connected_ticker = self._kalshi_ticker
+                log.info("Connecting to Kalshi WS for %s", connected_ticker)
+
+                self._ks_reconnect.clear()
 
                 async with websockets.connect(
                     KALSHI_WS_URL,
@@ -466,19 +508,32 @@ class BtcStreamManager:
                     close_timeout=5,
                 ) as ws:
                     # Subscribe to ticker + orderbook_delta for the active market
-                    if self._kalshi_ticker:
+                    if connected_ticker:
                         sub_msg = json.dumps({
                             "id": 1,
                             "cmd": "subscribe",
                             "params": {
                                 "channels": ["ticker", "orderbook_delta"],
-                                "market_ticker": self._kalshi_ticker,
+                                "market_ticker": connected_ticker,
                             },
                         })
                         await ws.send(sub_msg)
-                        log.info("Subscribed to Kalshi WS ticker: %s", self._kalshi_ticker)
+                        log.info("Subscribed to Kalshi WS ticker: %s", connected_ticker)
 
-                    await self._kalshi_recv_loop(ws)
+                    recv_task = asyncio.create_task(self._kalshi_recv_loop(ws))
+                    roll_task = asyncio.create_task(self._ks_reconnect.wait())
+
+                    done, pending = await asyncio.wait(
+                        [recv_task, roll_task],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    for t in pending:
+                        t.cancel()
+                    if roll_task in done:
+                        log.info("Kalshi WS reconnecting for new window ticker")
+                    else:
+                        for t in done:
+                            t.result()
 
             except asyncio.CancelledError:
                 raise
@@ -616,8 +671,12 @@ class BtcStreamManager:
                 continue
 
             try:
+                # Snapshot token IDs at connect time to detect rolls
+                connected_tokens = list(self._pm_token_ids)
                 log.info("Connecting to Polymarket WS for tokens: %s",
-                         [t[:20] + "..." for t in self._pm_token_ids])
+                         [t[:20] + "..." for t in connected_tokens])
+
+                self._pm_reconnect.clear()
 
                 async with websockets.connect(
                     PM_WS_URL,
@@ -626,7 +685,7 @@ class BtcStreamManager:
                     close_timeout=5,
                 ) as ws:
                     sub_msg = json.dumps({
-                        "assets_ids": self._pm_token_ids,
+                        "assets_ids": connected_tokens,
                         "type": "market",
                     })
                     await ws.send(sub_msg)
@@ -634,15 +693,20 @@ class BtcStreamManager:
 
                     recv_task = asyncio.create_task(self._pm_recv_loop(ws))
                     ping_task = asyncio.create_task(self._pm_ping_loop(ws))
+                    roll_task = asyncio.create_task(self._pm_reconnect.wait())
 
                     done, pending = await asyncio.wait(
-                        [recv_task, ping_task],
+                        [recv_task, ping_task, roll_task],
                         return_when=asyncio.FIRST_COMPLETED,
                     )
                     for t in pending:
                         t.cancel()
-                    for t in done:
-                        t.result()
+                    # If roll_task fired, just loop to reconnect with new tokens
+                    if roll_task in done:
+                        log.info("PM WS reconnecting for new window tokens")
+                    else:
+                        for t in done:
+                            t.result()
 
             except asyncio.CancelledError:
                 raise
@@ -732,33 +796,73 @@ class BtcStreamManager:
 
     # ── Window roll ───────────────────────────────────────────────────────────
 
+    def _seconds_until_next_window(self) -> float:
+        """Calculate seconds until the next 15-min window boundary."""
+        now = datetime.now(timezone.utc)
+        minute = (now.minute // 15) * 15
+        window_start = now.replace(minute=minute, second=0, microsecond=0)
+        next_window = window_start + timedelta(minutes=15)
+        return max(0, (next_window - now).total_seconds())
+
     async def _window_roll_loop(self):
         """
-        Check if the 15-min window has changed. If so, re-fetch contract
-        details and re-subscribe WebSockets to new markets/tokens.
+        Sleep until the current 15-min window ends, then fetch new contracts
+        from both platforms. Retries if the new contract isn't available yet.
         """
         while self._running:
-            await asyncio.sleep(self.WINDOW_CHECK_INTERVAL)
+            # Sleep precisely until window boundary (plus 1s buffer for APIs to update)
+            wait = self._seconds_until_next_window() + 1.0
+            log.info("Next window roll in %.0fs", wait)
+            await asyncio.sleep(wait)
+
+            if not self._running:
+                break
+
             new_slug = _current_15m_slug()
-            if new_slug != self._current_slug:
-                log.info("Window rolled: %s -> %s", self._current_slug, new_slug)
-                self._current_slug = new_slug
+            log.info("Window rolled: %s -> %s", self._current_slug, new_slug)
+            self._current_slug = new_slug
 
-                # Re-fetch both platforms for new window
-                try:
-                    pm = await asyncio.to_thread(fetch_polymarket_btc_15m)
-                    if pm and not pm.get("error"):
-                        self._pm_data = pm
-                        self._pm_token_ids = pm.get("token_ids", [])
-                except Exception as e:
-                    log.debug("Window roll PM fetch error: %s", e)
+            # Retry fetching new contracts — they may not be available instantly
+            pm_ok = False
+            ks_ok = False
 
-                try:
-                    ks = await asyncio.to_thread(fetch_kalshi_btc_15m)
-                    if ks:
-                        self._kalshi_data = ks
-                        self._kalshi_ticker = ks.get("ticker", "")
-                except Exception as e:
-                    log.debug("Window roll KS fetch error: %s", e)
+            for attempt in range(1, self.ROLL_MAX_RETRIES + 1):
+                if not self._running:
+                    break
 
+                if not pm_ok:
+                    try:
+                        pm = await asyncio.to_thread(fetch_polymarket_btc_15m)
+                        if pm and not pm.get("error") and pm.get("slug") == new_slug:
+                            self._pm_data = pm
+                            self._pm_token_ids = pm.get("token_ids", [])
+                            pm_ok = True
+                            log.info("PM new contract ready (attempt %d)", attempt)
+                    except Exception as e:
+                        log.debug("Window roll PM fetch error: %s", e)
+
+                if not ks_ok:
+                    try:
+                        ks = await asyncio.to_thread(fetch_kalshi_btc_15m)
+                        if ks and not ks.get("error"):
+                            self._kalshi_data = ks
+                            self._kalshi_ticker = ks.get("ticker", "")
+                            ks_ok = True
+                            log.info("KS new contract ready (attempt %d)", attempt)
+                    except Exception as e:
+                        log.debug("Window roll KS fetch error: %s", e)
+
+                if pm_ok and ks_ok:
+                    break
+
+                # Push partial update so UI shows whichever platform is ready
                 await self._push_update(force=True)
+                await asyncio.sleep(self.ROLL_RETRY_INTERVAL)
+
+            # Signal WS loops to reconnect with new tokens/tickers
+            if pm_ok:
+                self._pm_reconnect.set()
+            if ks_ok:
+                self._ks_reconnect.set()
+
+            await self._push_update(force=True)

@@ -171,7 +171,9 @@ export default function BtcPanel() {
               </div>
               <div className="btc-field btc-strike">
                 <span className="btc-label">Strike Price</span>
-                <span className="btc-value btc-highlight">Chainlink BTC/USD at open</span>
+                <span className="btc-value btc-highlight">
+                  {pm.floor_strike ? fmtStrike(pm.floor_strike) : '---'}
+                </span>
               </div>
               <div className="btc-field">
                 <span className="btc-label">Source</span>
