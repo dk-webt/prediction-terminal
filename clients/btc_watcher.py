@@ -406,7 +406,7 @@ class BtcStreamManager:
     PM_INACTIVITY_TIMEOUT = 120  # seconds before force-reconnect
     MIN_PUSH_INTERVAL = 0.5      # seconds — throttle pushes to frontend
     ROLL_RETRY_INTERVAL = 0.5    # seconds between retries when new contract not ready
-    ROLL_MAX_RETRIES = 20        # max retries (~10s max wait)
+    ROLL_MAX_RETRIES = 60        # max retries (~30s max wait for slow platforms)
 
     def __init__(self, on_update):
         self._on_update = on_update
@@ -664,9 +664,12 @@ class BtcStreamManager:
         while self._running:
             try:
                 data = await asyncio.to_thread(fetch_kalshi_btc_15m)
-                if data:
+                if data and not data.get("error"):
+                    new_ticker = data.get("ticker", "")
+                    if new_ticker != self._kalshi_ticker:
+                        log.info("KS poll: new ticker %s (was %s)", new_ticker, self._kalshi_ticker)
                     self._kalshi_data = data
-                    self._kalshi_ticker = data.get("ticker", "")
+                    self._kalshi_ticker = new_ticker
                     await self._push_update()
             except Exception as e:
                 log.debug("Kalshi poll error: %s", e)
@@ -882,10 +885,12 @@ class BtcStreamManager:
             log.info("ROLL START: %s -> %s", self._current_slug, new_slug)
             self._current_slug = new_slug
 
-            # Clear stale data so the UI doesn't show old window times
+            # Save old tickers for comparison, clear PM data (slug-validated)
+            # Keep Kalshi data visible until new contract arrives since
+            # Kalshi can be slow to transition between windows
+            old_ks_ticker = self._kalshi_ticker
             self._pm_data = None
             self._pm_token_ids = []
-            self._kalshi_data = None
 
             pm_ok = False
             ks_ok = False
@@ -930,11 +935,11 @@ class BtcStreamManager:
                     elif label == "ks":
                         got_ticker = result.get("ticker", "") if result else ""
                         log.debug("ROLL KS response: ticker=%s (old=%s) error=%s strike=%s close=%s",
-                                  got_ticker, self._kalshi_ticker,
+                                  got_ticker, old_ks_ticker,
                                   result.get("error") if result else "null",
                                   result.get("floor_strike") if result else "null",
                                   result.get("close_time", "") if result else "null")
-                        if result and not result.get("error") and got_ticker != self._kalshi_ticker:
+                        if result and not result.get("error") and got_ticker and got_ticker != old_ks_ticker:
                             self._kalshi_data = result
                             self._kalshi_ticker = got_ticker
                             ks_ok = True
