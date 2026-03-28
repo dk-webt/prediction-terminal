@@ -794,6 +794,7 @@ class BtcStreamManager:
 
     async def _pm_recv_loop(self, ws):
         """Receive messages from PM WS and update prices."""
+        import websockets
         while self._running:
             try:
                 raw = await asyncio.wait_for(
@@ -801,6 +802,9 @@ class BtcStreamManager:
                 )
             except asyncio.TimeoutError:
                 log.warning("PM WS inactivity timeout, forcing reconnect")
+                return
+            except websockets.exceptions.ConnectionClosed:
+                log.info("PM WS connection closed cleanly")
                 return
 
             if raw == "PONG":
@@ -931,7 +935,9 @@ class BtcStreamManager:
             log.info("ROLL TIMER: sleeping %.1fs until %s (now=%s, cur_slug=%s)",
                      wait, target.strftime("%H:%M:%S.%f")[:12],
                      now.strftime("%H:%M:%S.%f")[:12], self._current_slug)
-            await asyncio.sleep(wait)
+            # Sleep until boundary + 100ms buffer to avoid computing slug
+            # a few ms before the boundary (negative drift race condition)
+            await asyncio.sleep(wait + 0.1)
 
             if not self._running:
                 break
