@@ -122,7 +122,7 @@ def fetch_kalshi_btc_15m() -> dict | None:
         f"{KALSHI_BASE}/markets",
         headers=_kalshi_headers(),
         params={"series_ticker": "KXBTC15M", "status": "open", "limit": 5},
-        timeout=10,
+        timeout=5,
     )
     resp.raise_for_status()
     markets = resp.json().get("markets", [])
@@ -152,7 +152,7 @@ def fetch_kalshi_btc_15m() -> dict | None:
         ob_resp = requests.get(
             f"{KALSHI_BASE}/markets/{ticker}/orderbook",
             headers=_kalshi_headers(),
-            timeout=10,
+            timeout=5,
         )
         ob_resp.raise_for_status()
         ob = ob_resp.json().get("orderbook_fp", {})
@@ -239,7 +239,7 @@ def _try_find_pm_btc_15m():
     resp = requests.get(
         f"{PM_GAMMA}/events",
         params={"slug": slug},
-        timeout=10,
+        timeout=5,
     )
     resp.raise_for_status()
     events = resp.json()
@@ -255,7 +255,7 @@ def _try_find_pm_btc_15m():
             "order": "startDate",
             "ascending": "false",
         },
-        timeout=10,
+        timeout=5,
     )
     resp.raise_for_status()
     for e in resp.json():
@@ -266,8 +266,25 @@ def _try_find_pm_btc_15m():
     return None
 
 
+def _fetch_ob(token_id: str) -> tuple[float, float]:
+    """Fetch best bid/ask for a single PM CLOB token. Returns (best_bid, best_ask)."""
+    try:
+        resp = requests.get(
+            f"{PM_CLOB}/book", params={"token_id": token_id}, timeout=5,
+        )
+        resp.raise_for_status()
+        ob = resp.json()
+        best_bid = max((float(b["price"]) for b in ob.get("bids", [])), default=0.0)
+        best_ask = min((float(a["price"]) for a in ob.get("asks", [])), default=0.0)
+        return best_bid, best_ask
+    except Exception:
+        return 0.0, 0.0
+
+
 def fetch_polymarket_btc_15m() -> dict | None:
     """Fetch the currently active Polymarket BTC 15-min market."""
+    from concurrent.futures import ThreadPoolExecutor
+
     event = _try_find_pm_btc_15m()
     if not event:
         return None
@@ -285,33 +302,27 @@ def fetch_polymarket_btc_15m() -> dict | None:
     else:
         tokens = raw_tokens
 
-    up_bid = 0.0
-    up_ask = 0.0
-    down_bid = 0.0
-    down_ask = 0.0
+    event_start = market.get("eventStartTime", "")
+    end_date = market.get("endDate", "")
 
-    for i, token_id in enumerate(tokens[:2]):
-        try:
-            ob_resp = requests.get(
-                f"{PM_CLOB}/book",
-                params={"token_id": token_id},
-                timeout=10,
-            )
-            ob_resp.raise_for_status()
-            ob = ob_resp.json()
-            bids = ob.get("bids", [])
-            asks = ob.get("asks", [])
-            best_bid = max((float(b["price"]) for b in bids), default=0.0)
-            best_ask = min((float(a["price"]) for a in asks), default=0.0)
+    # Fetch orderbooks + strike price in parallel
+    up_bid, up_ask, down_bid, down_ask, strike = 0.0, 0.0, 0.0, 0.0, None
 
-            if i == 0:
-                up_bid = best_bid
-                up_ask = best_ask
-            else:
-                down_bid = best_bid
-                down_ask = best_ask
-        except Exception:
-            pass
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {}
+        if len(tokens) >= 1:
+            futures["up"] = pool.submit(_fetch_ob, tokens[0])
+        if len(tokens) >= 2:
+            futures["down"] = pool.submit(_fetch_ob, tokens[1])
+        if event_start:
+            futures["strike"] = pool.submit(fetch_pm_strike_price, event_start, end_date)
+
+        if "up" in futures:
+            up_bid, up_ask = futures["up"].result()
+        if "down" in futures:
+            down_bid, down_ask = futures["down"].result()
+        if "strike" in futures:
+            strike = futures["strike"].result()
 
     if up_ask == 0.0:
         up_ask = _safe_float(market.get("bestAsk"))
@@ -322,25 +333,18 @@ def fetch_polymarket_btc_15m() -> dict | None:
     if down_bid == 0.0 and up_ask > 0:
         down_bid = round(1.0 - up_ask, 4)
 
-    fee_schedule = market.get("feeSchedule")
-
-    # Fetch actual Chainlink opening price from Polymarket's crypto-price API
-    event_start = market.get("eventStartTime", "")
-    end_date = market.get("endDate", "")
-    strike = fetch_pm_strike_price(event_start, end_date) if event_start else None
-
     return {
         "platform": "polymarket",
         "slug": slug,
         "title": title,
         "floor_strike": strike,
-        "event_start_time": market.get("eventStartTime", ""),
-        "end_time": market.get("endDate", ""),
+        "event_start_time": event_start,
+        "end_time": end_date,
         "up_ask": up_ask,
         "up_bid": up_bid,
         "down_ask": down_ask,
         "down_bid": down_bid,
-        "fee_schedule": fee_schedule,
+        "fee_schedule": market.get("feeSchedule"),
         "description": (market.get("description") or "")[:300],
         "resolution_source": market.get("resolutionSource", ""),
         "url": f"https://polymarket.com/event/{slug}",
@@ -396,8 +400,8 @@ class BtcStreamManager:
     PM_PING_INTERVAL = 8         # seconds between PM WS PING heartbeats
     PM_INACTIVITY_TIMEOUT = 120  # seconds before force-reconnect
     MIN_PUSH_INTERVAL = 0.5      # seconds — throttle pushes to frontend
-    ROLL_RETRY_INTERVAL = 3      # seconds between retries when new contract not ready
-    ROLL_MAX_RETRIES = 10        # max retries before giving up on a roll
+    ROLL_RETRY_INTERVAL = 0.5    # seconds between retries when new contract not ready
+    ROLL_MAX_RETRIES = 20        # max retries (~10s max wait)
 
     def __init__(self, on_update):
         self._on_update = on_update
@@ -796,6 +800,35 @@ class BtcStreamManager:
 
     # ── Window roll ───────────────────────────────────────────────────────────
 
+    async def _poll_pm_strike(self):
+        """Poll for the PM Chainlink strike price until it becomes available."""
+        STRIKE_POLL_INTERVAL = 3  # seconds
+        STRIKE_MAX_ATTEMPTS = 20  # ~60 seconds max
+
+        event_start = self._pm_data.get("event_start_time", "")
+        end_time = self._pm_data.get("end_time", "")
+        if not event_start:
+            return
+
+        for attempt in range(1, STRIKE_MAX_ATTEMPTS + 1):
+            if not self._running:
+                return
+            await asyncio.sleep(STRIKE_POLL_INTERVAL)
+
+            try:
+                strike = await asyncio.to_thread(
+                    fetch_pm_strike_price, event_start, end_time
+                )
+                if strike is not None:
+                    self._pm_data["floor_strike"] = strike
+                    log.info("PM strike price available: $%.2f (attempt %d)", strike, attempt)
+                    await self._push_update(force=True)
+                    return
+            except Exception as e:
+                log.debug("PM strike poll error: %s", e)
+
+        log.warning("PM strike price not available after %d attempts", STRIKE_MAX_ATTEMPTS)
+
     def _seconds_until_next_window(self) -> float:
         """Calculate seconds until the next 15-min window boundary."""
         now = datetime.now(timezone.utc)
@@ -807,11 +840,11 @@ class BtcStreamManager:
     async def _window_roll_loop(self):
         """
         Sleep until the current 15-min window ends, then fetch new contracts
-        from both platforms. Retries if the new contract isn't available yet.
+        from both platforms in parallel. Retries with tight interval if a
+        contract isn't available yet.
         """
         while self._running:
-            # Sleep precisely until window boundary (plus 1s buffer for APIs to update)
-            wait = self._seconds_until_next_window() + 1.0
+            wait = self._seconds_until_next_window()
             log.info("Next window roll in %.0fs", wait)
             await asyncio.sleep(wait)
 
@@ -822,7 +855,6 @@ class BtcStreamManager:
             log.info("Window rolled: %s -> %s", self._current_slug, new_slug)
             self._current_slug = new_slug
 
-            # Retry fetching new contracts — they may not be available instantly
             pm_ok = False
             ks_ok = False
 
@@ -830,32 +862,37 @@ class BtcStreamManager:
                 if not self._running:
                     break
 
+                # Fetch both platforms in parallel
+                coros = []
                 if not pm_ok:
-                    try:
-                        pm = await asyncio.to_thread(fetch_polymarket_btc_15m)
-                        if pm and not pm.get("error") and pm.get("slug") == new_slug:
-                            self._pm_data = pm
-                            self._pm_token_ids = pm.get("token_ids", [])
-                            pm_ok = True
-                            log.info("PM new contract ready (attempt %d)", attempt)
-                    except Exception as e:
-                        log.debug("Window roll PM fetch error: %s", e)
-
+                    coros.append(("pm", asyncio.to_thread(fetch_polymarket_btc_15m)))
                 if not ks_ok:
-                    try:
-                        ks = await asyncio.to_thread(fetch_kalshi_btc_15m)
-                        if ks and not ks.get("error"):
-                            self._kalshi_data = ks
-                            self._kalshi_ticker = ks.get("ticker", "")
-                            ks_ok = True
-                            log.info("KS new contract ready (attempt %d)", attempt)
-                    except Exception as e:
-                        log.debug("Window roll KS fetch error: %s", e)
+                    coros.append(("ks", asyncio.to_thread(fetch_kalshi_btc_15m)))
+
+                results = await asyncio.gather(
+                    *(c for _, c in coros), return_exceptions=True
+                )
+
+                for (label, _), result in zip(coros, results):
+                    if isinstance(result, Exception):
+                        log.debug("Window roll %s error: %s", label, result)
+                        continue
+
+                    if label == "pm" and result and not result.get("error"):
+                        if result.get("slug") == new_slug:
+                            self._pm_data = result
+                            self._pm_token_ids = result.get("token_ids", [])
+                            pm_ok = True
+                            log.info("PM ready (attempt %d)", attempt)
+                    elif label == "ks" and result and not result.get("error"):
+                        self._kalshi_data = result
+                        self._kalshi_ticker = result.get("ticker", "")
+                        ks_ok = True
+                        log.info("KS ready (attempt %d)", attempt)
 
                 if pm_ok and ks_ok:
                     break
 
-                # Push partial update so UI shows whichever platform is ready
                 await self._push_update(force=True)
                 await asyncio.sleep(self.ROLL_RETRY_INTERVAL)
 
@@ -866,3 +903,8 @@ class BtcStreamManager:
                 self._ks_reconnect.set()
 
             await self._push_update(force=True)
+
+            # Strike price may not be available immediately at window open.
+            # Retry fetching it until the Chainlink opening price is recorded.
+            if pm_ok and not self._pm_data.get("floor_strike"):
+                await self._poll_pm_strike()
