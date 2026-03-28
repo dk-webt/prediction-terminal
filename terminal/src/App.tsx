@@ -22,6 +22,7 @@ export default function App() {
     setBtcSnapshot, setBtcAutoRefresh,
     setFundKs, setFundPm, setFundPct,
     setPendingOrder,
+    togglePanel,
     activePanel, defaultLimit,
   } = useStore()
 
@@ -360,6 +361,32 @@ export default function App() {
             setErrorMsg('Usage: FUND KS <amount> | FUND PM <amount> | FUND PCT <0-1>')
           }
           setTimeout(() => { useStore.getState().setProgressMsg(''); useStore.getState().setErrorMsg('') }, 3000)
+          break
+        }
+
+        case 'SHOW':
+        case 'HIDE':
+        case 'TOGGLE': {
+          const target = (parts[1] || '').toUpperCase()
+          const panelMap: Record<string, 'pm' | 'ks' | 'detail'> = {
+            PM: 'pm', POLY: 'pm', POLYMARKET: 'pm',
+            KS: 'ks', KALSHI: 'ks',
+            DETAIL: 'detail', DET: 'detail',
+          }
+          const panel = panelMap[target]
+          if (!panel) {
+            setErrorMsg(`Usage: ${cmd} PM|KS|DETAIL`)
+            setTimeout(() => useStore.getState().setErrorMsg(''), 3000)
+            break
+          }
+          if (cmd === 'TOGGLE') {
+            togglePanel(panel)
+          } else {
+            const show = cmd === 'SHOW'
+            if (panel === 'pm') useStore.getState().setShowPm(show)
+            else if (panel === 'ks') useStore.getState().setShowKs(show)
+            else useStore.getState().setShowDetail(show)
+          }
           break
         }
 

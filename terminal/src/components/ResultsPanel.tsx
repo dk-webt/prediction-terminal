@@ -235,6 +235,7 @@ function HelpView() {
     ['CLEAR', 'Clear the semantic match cache'],
     ['LIMIT N', 'Set default event limit'],
     ['BTC', 'Live BTC 15-min binary options watcher (auto-refreshes)'],
+    ['SHOW/HIDE/TOGGLE PM|KS|DETAIL', 'Show, hide, or toggle side panels'],
     ['BUY KS/PM YES/UP N P', 'Buy contracts (BUY KS YES 10 0.50, BUY PM UP 5 MKT)'],
     ['SELL KS/PM YES/DOWN N', 'Sell contracts (SELL KS NO 10 0.55)'],
     ['POS', 'Show current positions on both platforms'],
@@ -421,7 +422,7 @@ const VIEW_LABELS: Record<string, string> = {
   HIST: 'HISTORY',
 }
 
-export default function ResultsPanel({ focused }: { focused: boolean }) {
+export default function ResultsPanel({ focused, style }: { focused: boolean; style?: React.CSSProperties }) {
   const { centerView, activeCategory, loading, progressMsg, errorMsg, arbResults, compareResults } = useStore()
 
   const count =
@@ -438,7 +439,7 @@ export default function ResultsPanel({ focused }: { focused: boolean }) {
       : baseLabel
 
   return (
-    <div className={`panel results-panel${focused ? ' focused' : ''}`}>
+    <div className={`panel results-panel${focused ? ' focused' : ''}`} style={style}>
       <div className="panel-header">
         <span className="panel-title">{panelTitle}</span>
         {count > 0 && <span className="panel-count">{count}</span>}

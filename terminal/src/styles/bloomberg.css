@@ -102,8 +102,7 @@ html, body, #root {
 
 .panel-grid {
   display: grid;
-  grid-template-columns: 280px 1fr 300px;
-  grid-template-rows: 1fr 1fr;
+  /* grid-template-columns set dynamically via inline style */
   overflow: hidden;
   background: var(--border);
   gap: 1px;
@@ -152,6 +151,16 @@ html, body, #root {
   font-size: 10px;
 }
 
+.panel-close {
+  cursor: pointer;
+  color: var(--amber-dim);
+  font-size: 10px;
+  padding: 0 4px;
+}
+.panel-close:hover {
+  color: var(--red);
+}
+
 .panel-body {
   flex: 1;
   overflow-y: auto;
@@ -171,14 +180,9 @@ html, body, #root {
 
 /* ── Events panel (left col) ────────────────────────────────────────────────── */
 
-.events-panel-pm {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-.events-panel-ks {
-  grid-column: 1;
-  grid-row: 2;
+/* Left event panels — grid position set dynamically via inline style */
+.events-panel-dynamic {
+  /* no fixed grid position */
 }
 
 .event-row {
@@ -211,17 +215,9 @@ html, body, #root {
 
 /* ── Results panel (center) ─────────────────────────────────────────────────── */
 
-.results-panel {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-}
-
-/* ── Detail panel (right) ───────────────────────────────────────────────────── */
-
-.detail-panel {
-  grid-column: 3;
-  grid-row: 1 / span 2;
-}
+/* Results and Detail — grid position set dynamically via inline style */
+.results-panel { }
+.detail-panel { }
 
 .detail-body {
   padding: 10px;

@@ -36,6 +36,9 @@ interface TerminalState {
   fundPm: number       // available cash on Polymarket
   fundPct: number      // percentage of funds to use (0-1)
   pendingOrder: OrderConfirmation | null
+  showPm: boolean
+  showKs: boolean
+  showDetail: boolean
 
   // UI state
   activeView: View
@@ -70,6 +73,10 @@ interface TerminalState {
   setFundPm: (v: number) => void
   setFundPct: (v: number) => void
   setPendingOrder: (v: OrderConfirmation | null) => void
+  setShowPm: (v: boolean) => void
+  setShowKs: (v: boolean) => void
+  setShowDetail: (v: boolean) => void
+  togglePanel: (panel: 'pm' | 'ks' | 'detail') => void
   setActiveView: (v: View) => void
   setActiveCategory: (v: string | null) => void
   setSelectedIndex: (v: number | null) => void
@@ -100,6 +107,9 @@ export const useStore = create<TerminalState>((set) => ({
   fundPm: 0,
   fundPct: 1.0,
   pendingOrder: null,
+  showPm: true,
+  showKs: true,
+  showDetail: true,
   activeView: 'IDLE',
   activeCategory: null,
   selectedIndex: null,
@@ -127,6 +137,14 @@ export const useStore = create<TerminalState>((set) => ({
   setFundPm: (fundPm) => set({ fundPm }),
   setFundPct: (fundPct) => set({ fundPct }),
   setPendingOrder: (pendingOrder) => set({ pendingOrder }),
+  setShowPm: (showPm) => set({ showPm }),
+  setShowKs: (showKs) => set({ showKs }),
+  setShowDetail: (showDetail) => set({ showDetail }),
+  togglePanel: (panel) => set((s) => {
+    if (panel === 'pm') return { showPm: !s.showPm }
+    if (panel === 'ks') return { showKs: !s.showKs }
+    return { showDetail: !s.showDetail }
+  }),
   setActiveView: (activeView) => set({ activeView }),
   setActiveCategory: (activeCategory) => set({ activeCategory }),
   setSelectedIndex: (selectedIndex) => set({ selectedIndex }),

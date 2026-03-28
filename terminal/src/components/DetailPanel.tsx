@@ -288,8 +288,8 @@ function BtcDetail({ snap }: { snap: BtcSnapshot }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export default function DetailPanel({ focused }: { focused: boolean }) {
-  const { activeView, activePanel, selectedIndex, arbResults, compareResults, pmEvents, ksEvents, btcSnapshot } = useStore()
+export default function DetailPanel({ focused, style }: { focused: boolean; style?: React.CSSProperties }) {
+  const { activeView, activePanel, selectedIndex, arbResults, compareResults, pmEvents, ksEvents, btcSnapshot, togglePanel } = useStore()
 
   let content: React.ReactNode = null
 
@@ -321,9 +321,17 @@ export default function DetailPanel({ focused }: { focused: boolean }) {
   }
 
   return (
-    <div className={`panel detail-panel${focused ? ' focused' : ''}`}>
+    <div className={`panel detail-panel${focused ? ' focused' : ''}`} style={style}>
       <div className="panel-header">
         <span className="panel-title">DETAIL</span>
+        <span
+          className="panel-close"
+          style={{ marginLeft: 'auto' }}
+          onClick={() => togglePanel('detail')}
+          title="Close detail panel"
+        >
+          ✕
+        </span>
       </div>
       <div className="panel-body">
         {content ?? (

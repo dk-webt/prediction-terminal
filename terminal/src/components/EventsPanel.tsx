@@ -15,12 +15,13 @@ function topPrice(ev: NormalizedEvent) {
 interface Props {
   source: 'PM' | 'KS'
   className: string
+  style?: React.CSSProperties
   runCommand: (cmd: string) => void
   focused: boolean
 }
 
-export default function EventsPanel({ source, className, runCommand, focused }: Props) {
-  const { pmEvents, ksEvents, activePanel, selectedIndex, setSelectedIndex, setActivePanel } =
+export default function EventsPanel({ source, className, style, runCommand, focused }: Props) {
+  const { pmEvents, ksEvents, activePanel, selectedIndex, setSelectedIndex, setActivePanel, togglePanel } =
     useStore()
 
   const events = source === 'PM' ? pmEvents : ksEvents
@@ -43,7 +44,7 @@ export default function EventsPanel({ source, className, runCommand, focused }: 
   }, [selectedIndex, isActive])
 
   return (
-    <div className={`panel ${className}${focused ? ' focused' : ''}`}>
+    <div className={`panel ${className}${focused ? ' focused' : ''}`} style={style}>
       <div className="panel-header">
         <span className="panel-title">{label}</span>
         {events.length > 0 && (
@@ -55,6 +56,13 @@ export default function EventsPanel({ source, className, runCommand, focused }: 
           title={`Fetch ${label} events`}
         >
           ↻
+        </span>
+        <span
+          className="panel-close"
+          onClick={() => togglePanel(source === 'PM' ? 'pm' : 'ks')}
+          title={`Close ${label} panel`}
+        >
+          ✕
         </span>
       </div>
 
