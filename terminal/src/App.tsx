@@ -21,6 +21,7 @@ export default function App() {
     setCenterView, navigateCenterHistory, jumpToCenterHistory,
     setBtcSnapshot, setBtcAutoRefresh,
     setFundKs, setFundPm, setFundPct,
+    setPendingOrder,
     activePanel, defaultLimit,
   } = useStore()
 
@@ -108,6 +109,27 @@ export default function App() {
         state.setProgressMsg(`Debug log downloaded (${log.split('\n').length} lines)`)
         state.setLoading(false)
         setTimeout(() => useStore.getState().setProgressMsg(''), 3000)
+      } else if (msg.type === 'btc_order_confirm') {
+        const state = useStore.getState()
+        state.setPendingOrder({ order_id: msg.order_id as string, summary: msg.summary as string })
+        state.setProgressMsg(`${msg.summary} — Type Y to confirm, N to cancel`)
+        state.setLoading(false)
+      } else if (msg.type === 'btc_order_result') {
+        const state = useStore.getState()
+        state.setPendingOrder(null)
+        if (msg.success) {
+          state.setProgressMsg('Order placed successfully')
+        } else {
+          state.setErrorMsg(`Order failed: ${msg.error || 'unknown error'}`)
+        }
+        state.setLoading(false)
+        setTimeout(() => { useStore.getState().setProgressMsg(''); useStore.getState().setErrorMsg('') }, 5000)
+      } else if (msg.type === 'btc_order_cancelled') {
+        const state = useStore.getState()
+        state.setPendingOrder(null)
+        state.setProgressMsg('Order cancelled')
+        state.setLoading(false)
+        setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
       } else if (msg.type === 'error') {
         const state = useStore.getState()
         state.setLoading(false)
@@ -173,6 +195,21 @@ export default function App() {
       }
 
       useStore.getState().setErrorMsg('')
+
+      // Handle Y/N confirmation for pending orders
+      const pending = useStore.getState().pendingOrder
+      if (pending && (cmd === 'Y' || cmd === 'N')) {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          if (cmd === 'Y') {
+            wsRef.current.send(JSON.stringify({ type: 'btc_order_execute', order_id: pending.order_id }))
+            setProgressMsg('Executing order...')
+            setLoading(true)
+          } else {
+            wsRef.current.send(JSON.stringify({ type: 'btc_order_cancel', order_id: pending.order_id }))
+          }
+        }
+        return
+      }
 
       // Unsubscribe from BTC stream when navigating away
       if (cmd !== 'BTC' && useStore.getState().btcAutoRefresh) {
@@ -323,6 +360,107 @@ export default function App() {
             setErrorMsg('Usage: FUND KS <amount> | FUND PM <amount> | FUND PCT <0-1>')
           }
           setTimeout(() => { useStore.getState().setProgressMsg(''); useStore.getState().setErrorMsg('') }, 3000)
+          break
+        }
+
+        case 'BUY':
+        case 'SELL': {
+          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+            setErrorMsg('WebSocket not connected.')
+            return
+          }
+          // BUY KS YES 10 0.50 | BUY PM UP 10 0.50 | SELL KS NO 5 | BUY KS YES 10 MKT
+          const action = cmd.toLowerCase() as 'buy' | 'sell'
+          const platToken = parts[1] // KS or PM
+          const sideToken = parts[2] // YES/NO or UP/DOWN
+          const countStr = parts[3]
+          const priceOrMkt = parts[4] // price or "MKT" or undefined
+
+          if (!platToken || !sideToken || !countStr) {
+            setErrorMsg(`Usage: ${cmd} KS/PM YES/NO/UP/DOWN <count> [price|MKT]`)
+            setTimeout(() => useStore.getState().setErrorMsg(''), 4000)
+            break
+          }
+
+          const orderCount = parseInt(countStr, 10)
+          if (isNaN(orderCount) || orderCount <= 0) {
+            setErrorMsg('Count must be a positive integer')
+            break
+          }
+
+          const isMkt = priceOrMkt === 'MKT'
+          const orderPrice = isMkt ? undefined : priceOrMkt ? parseFloat(priceOrMkt) : undefined
+          const orderType = isMkt ? 'market' : 'limit'
+
+          if (orderType === 'limit' && action === 'buy' && orderPrice === undefined) {
+            setErrorMsg('Limit buy requires a price. Use MKT for market order.')
+            setTimeout(() => useStore.getState().setErrorMsg(''), 4000)
+            break
+          }
+
+          // Resolve platform, side, ticker/token_id from current BTC snapshot
+          const snap = useStore.getState().btcSnapshot
+          if (!snap) {
+            setErrorMsg('No BTC data. Run BTC first.')
+            break
+          }
+
+          let platform = ''
+          let side = ''
+          let ticker = ''
+          let tokenId = ''
+
+          if (platToken === 'KS') {
+            platform = 'kalshi'
+            side = sideToken === 'YES' || sideToken === 'UP' ? 'yes' : 'no'
+            ticker = snap.kalshi?.ticker || ''
+            if (!ticker) { setErrorMsg('No active Kalshi contract'); break }
+          } else if (platToken === 'PM') {
+            platform = 'polymarket'
+            const tokens = snap.polymarket?.token_ids || []
+            if (sideToken === 'UP' || sideToken === 'YES') {
+              side = 'up'
+              tokenId = tokens[0] || ''
+            } else {
+              side = 'down'
+              tokenId = tokens[1] || ''
+            }
+            if (!tokenId) { setErrorMsg('No active Polymarket contract'); break }
+          } else {
+            setErrorMsg('Platform must be KS or PM')
+            break
+          }
+
+          wsRef.current.send(JSON.stringify({
+            type: 'btc_order', platform, action, side,
+            count: orderCount,
+            price: orderPrice ?? null,
+            order_type: orderType,
+            ticker, token_id: tokenId,
+          }))
+          break
+        }
+
+        case 'POS': {
+          setLoading(true)
+          setProgressMsg('Fetching positions...')
+          fetch(`${API}/btc/positions`)
+            .then((r) => r.json())
+            .then((data) => {
+              setLoading(false)
+              const ksPos = data.kalshi?.data || []
+              const pmPos = data.polymarket?.data || []
+              const ksErr = data.kalshi?.error
+              const pmErr = data.polymarket?.error
+              let msg = ''
+              if (ksErr) msg += `KS: ${ksErr} `
+              else msg += `KS: ${ksPos.length} position(s) `
+              if (pmErr) msg += `| PM: ${pmErr}`
+              else msg += `| PM: ${pmPos.length} position(s)`
+              setProgressMsg(msg)
+              setTimeout(() => useStore.getState().setProgressMsg(''), 5000)
+            })
+            .catch((e) => { setLoading(false); setErrorMsg(String(e)) })
           break
         }
 

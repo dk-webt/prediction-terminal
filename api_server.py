@@ -292,6 +292,56 @@ async def get_btc_snapshot():
         raise HTTPException(status_code=502, detail=str(exc))
 
 
+@app.post("/btc/order")
+async def place_btc_order(body: dict):
+    """Place a buy/sell order on Kalshi or Polymarket."""
+    platform = body.get("platform", "")
+    action = body.get("action", "")
+    side = body.get("side", "")
+    count = body.get("count", 0)
+    price = body.get("price")
+    order_type = body.get("order_type", "limit")
+
+    try:
+        if platform == "kalshi":
+            from clients.executor import place_kalshi_order
+            ticker = body.get("ticker", "")
+            if not ticker:
+                raise HTTPException(status_code=400, detail="Missing ticker for Kalshi order")
+            result = await asyncio.to_thread(
+                place_kalshi_order, ticker, action, side, count, price, order_type
+            )
+        elif platform == "polymarket":
+            from clients.executor import place_polymarket_order
+            token_id = body.get("token_id", "")
+            if not token_id:
+                raise HTTPException(status_code=400, detail="Missing token_id for Polymarket order")
+            pm_side = "BUY" if action == "buy" else "SELL"
+            result = await asyncio.to_thread(
+                place_polymarket_order, token_id, pm_side, count, price, order_type
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown platform: {platform}")
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/btc/positions")
+async def get_btc_positions():
+    """Fetch positions from both platforms."""
+    from clients.executor import get_kalshi_positions, get_polymarket_positions
+    try:
+        ks = await asyncio.to_thread(get_kalshi_positions)
+        pm = await asyncio.to_thread(get_polymarket_positions)
+        return {"kalshi": ks, "polymarket": pm}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @app.get("/cache/stats")
 async def get_cache_stats():
     from cache import cache_stats
@@ -311,6 +361,7 @@ async def clear_cache_endpoint():
 async def websocket_status(websocket: WebSocket):
     await websocket.accept()
     btc_stream = None  # BtcStreamManager instance, if active
+    pending_orders: dict = {}  # order_id -> order details for confirmation flow
     try:
         while True:
             data = await websocket.receive_json()
@@ -375,6 +426,66 @@ async def websocket_status(websocket: WebSocket):
                 elif action == "clear":
                     open(BTC_DEBUG_LOG, "w").close()
                     await websocket.send_json({"type": "btc_debug_log", "log": "(cleared)"})
+            elif cmd == "btc_order":
+                import uuid as _uuid
+                order_id = str(_uuid.uuid4())[:8]
+                platform = data.get("platform", "")
+                action = data.get("action", "")
+                side = data.get("side", "")
+                count = int(data.get("count", 0))
+                price = data.get("price")
+                order_type = data.get("order_type", "limit")
+                ticker = data.get("ticker", "")
+                token_id = data.get("token_id", "")
+
+                # Build summary
+                plat_label = "KS" if platform == "kalshi" else "PM"
+                price_str = f" @ ${price:.2f}" if price else " MKT"
+                total = f" (${count * price:.2f} total)" if price else ""
+                summary = f"{action.upper()} {count} {plat_label} {side.upper()}{price_str}{total}"
+
+                pending_orders[order_id] = {
+                    "platform": platform, "action": action, "side": side,
+                    "count": count, "price": price, "order_type": order_type,
+                    "ticker": ticker, "token_id": token_id,
+                }
+                await websocket.send_json({
+                    "type": "btc_order_confirm",
+                    "order_id": order_id,
+                    "summary": summary,
+                })
+
+            elif cmd == "btc_order_execute":
+                order_id = data.get("order_id", "")
+                order = pending_orders.pop(order_id, None)
+                if not order:
+                    await websocket.send_json({"type": "btc_order_result", "success": False, "error": "Order expired or not found"})
+                else:
+                    try:
+                        if order["platform"] == "kalshi":
+                            from clients.executor import place_kalshi_order
+                            result = await asyncio.to_thread(
+                                place_kalshi_order,
+                                order["ticker"], order["action"], order["side"],
+                                order["count"], order["price"], order["order_type"],
+                            )
+                        else:
+                            from clients.executor import place_polymarket_order
+                            pm_side = "BUY" if order["action"] == "buy" else "SELL"
+                            result = await asyncio.to_thread(
+                                place_polymarket_order,
+                                order["token_id"], pm_side,
+                                order["count"], order["price"], order["order_type"],
+                            )
+                        await websocket.send_json({"type": "btc_order_result", **result})
+                    except Exception as exc:
+                        await websocket.send_json({"type": "btc_order_result", "success": False, "error": str(exc)})
+
+            elif cmd == "btc_order_cancel":
+                order_id = data.get("order_id", "")
+                pending_orders.pop(order_id, None)
+                await websocket.send_json({"type": "btc_order_cancelled"})
+
             else:
                 await websocket.send_json({"type": "error", "msg": f"Unknown WS command: {cmd}"})
 

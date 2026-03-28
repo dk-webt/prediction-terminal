@@ -102,6 +102,17 @@ export interface BtcSnapshot {
   rolling?: boolean
 }
 
+export interface OrderConfirmation {
+  order_id: string
+  summary: string
+}
+
+export interface OrderResult {
+  success: boolean
+  error?: string
+  data?: Record<string, unknown>
+}
+
 // Extend Window for Electron bridge
 declare global {
   interface Window {

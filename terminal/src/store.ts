@@ -5,6 +5,7 @@ import type {
   CompareResult,
   CacheStats,
   BtcSnapshot,
+  OrderConfirmation,
 } from './types'
 
 export type View = 'IDLE' | 'PM' | 'KS' | 'ARB' | 'CMP' | 'HELP' | 'CACHE' | 'CATS' | 'HIST' | 'BTC'
@@ -34,6 +35,7 @@ interface TerminalState {
   fundKs: number       // available cash on Kalshi
   fundPm: number       // available cash on Polymarket
   fundPct: number      // percentage of funds to use (0-1)
+  pendingOrder: OrderConfirmation | null
 
   // UI state
   activeView: View
@@ -67,6 +69,7 @@ interface TerminalState {
   setFundKs: (v: number) => void
   setFundPm: (v: number) => void
   setFundPct: (v: number) => void
+  setPendingOrder: (v: OrderConfirmation | null) => void
   setActiveView: (v: View) => void
   setActiveCategory: (v: string | null) => void
   setSelectedIndex: (v: number | null) => void
@@ -96,6 +99,7 @@ export const useStore = create<TerminalState>((set) => ({
   fundKs: 0,
   fundPm: 0,
   fundPct: 1.0,
+  pendingOrder: null,
   activeView: 'IDLE',
   activeCategory: null,
   selectedIndex: null,
@@ -122,6 +126,7 @@ export const useStore = create<TerminalState>((set) => ({
   setFundKs: (fundKs) => set({ fundKs }),
   setFundPm: (fundPm) => set({ fundPm }),
   setFundPct: (fundPct) => set({ fundPct }),
+  setPendingOrder: (pendingOrder) => set({ pendingOrder }),
   setActiveView: (activeView) => set({ activeView }),
   setActiveCategory: (activeCategory) => set({ activeCategory }),
   setSelectedIndex: (selectedIndex) => set({ selectedIndex }),

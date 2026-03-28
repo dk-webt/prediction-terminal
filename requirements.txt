@@ -7,3 +7,5 @@ numpy
 fastapi
 uvicorn[standard]
 websockets
+py-clob-client
+cryptography
