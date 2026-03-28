@@ -26,7 +26,7 @@ function timeRemaining(endIso: string | undefined): string {
     const end = new Date(endIso).getTime()
     const now = Date.now()
     const diff = end - now
-    if (diff <= 0) return 'EXPIRED'
+    if (diff <= 0) return 'ROLLING...'
     const mins = Math.floor(diff / 60000)
     const secs = Math.floor((diff % 60000) / 1000)
     return `${mins}m ${secs.toString().padStart(2, '0')}s`
@@ -224,80 +224,6 @@ export default function BtcPanel() {
           )}
         </div>
       </div>
-
-      {/* Synthetic Options */}
-      {ks && !ks.error && pm && !pm.error && (() => {
-        const ksYesAsk = ks.yes_ask ?? 0
-        const ksNoAsk = ks.no_ask ?? 0
-        const pmDownAsk = pm.down_ask ?? 0
-        const pmUpAsk = pm.up_ask ?? 0
-        const ksStrike = ks.floor_strike
-        const pmStrike = pm.floor_strike
-
-        // Option 1: Buy Yes KS + Buy No (Down) PM
-        const cost1 = ksYesAsk + pmDownAsk
-        const profit1 = cost1 > 0 && cost1 < 1.0 ? (1.0 - cost1) : null
-        const noGap1 = (ksStrike && pmStrike) ? (ksStrike < pmStrike ? 'Yes' : 'No') : null
-
-        // Option 2: Buy No KS + Buy Yes (Up) PM
-        const cost2 = ksNoAsk + pmUpAsk
-        const profit2 = cost2 > 0 && cost2 < 1.0 ? (1.0 - cost2) : null
-        const noGap2 = (ksStrike && pmStrike) ? (pmStrike < ksStrike ? 'Yes' : 'No') : null
-
-        const strikeGap = (ksStrike && pmStrike) ? ksStrike - pmStrike : null
-
-        return (
-          <div className="btc-synthetic">
-            <div className="btc-platform-header">SYNTHETIC OPTIONS</div>
-            <div className="btc-field" style={{ marginBottom: 4 }}>
-              <span className="btc-label">Strike Gap (KS − PM)</span>
-              <span className={`btc-value ${strikeGap !== null ? 'btc-highlight' : 'btc-spread'}`}>
-                {strikeGap !== null
-                  ? `${strikeGap >= 0 ? '+' : ''}$${strikeGap.toFixed(2)}`
-                  : '--'}
-              </span>
-            </div>
-            <table className="btc-price-table">
-              <thead>
-                <tr>
-                  <th></th>
-                  <th>KS Yes + PM Down</th>
-                  <th>KS No + PM Up</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="btc-label">Combined Cost</td>
-                  <td className={cost1 < 1 ? 'btc-bid' : 'btc-ask'}>
-                    {cost1 > 0 ? `$${cost1.toFixed(2)}` : '---'}
-                  </td>
-                  <td className={cost2 < 1 ? 'btc-bid' : 'btc-ask'}>
-                    {cost2 > 0 ? `$${cost2.toFixed(2)}` : '---'}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="btc-label">Profit</td>
-                  <td className={profit1 ? 'btc-bid' : 'btc-spread'}>
-                    {profit1 !== null ? `$${profit1.toFixed(2)}` : '--'}
-                  </td>
-                  <td className={profit2 ? 'btc-bid' : 'btc-spread'}>
-                    {profit2 !== null ? `$${profit2.toFixed(2)}` : '--'}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="btc-label">No-Gap</td>
-                  <td className={noGap1 === 'Yes' ? 'btc-bid' : noGap1 === 'No' ? 'btc-ask' : 'btc-spread'}>
-                    {noGap1 ?? '--'}
-                  </td>
-                  <td className={noGap2 === 'Yes' ? 'btc-bid' : noGap2 === 'No' ? 'btc-ask' : 'btc-spread'}>
-                    {noGap2 ?? '--'}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )
-      })()}
 
       <div className="btc-footer">
         <span className="btc-dim">

@@ -1,5 +1,5 @@
 import { useStore } from '../store'
-import type { ArbitrageResult, CompareResult, NormalizedEvent, MarketMatchResult } from '../types'
+import type { ArbitrageResult, CompareResult, NormalizedEvent, MarketMatchResult, BtcSnapshot } from '../types'
 
 function fmtPct(v: number) { return `${(v * 100).toFixed(1)}¢` }
 function fmtAnn(v: number | null) { return v !== null ? `${(v * 100).toFixed(1)}%` : '—' }
@@ -161,14 +161,114 @@ function EventDetail({ ev }: { ev: NormalizedEvent }) {
   )
 }
 
+// ── BTC Synthetic Options detail ─────────────────────────────────────────────
+
+function fmtStrike(v: number | undefined) {
+  if (v === undefined || v === 0) return 'N/A'
+  return `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function BtcDetail({ snap }: { snap: BtcSnapshot }) {
+  const ks = snap.kalshi
+  const pm = snap.polymarket
+
+  if (!ks || ks.error || !pm || pm.error) {
+    return (
+      <div className="detail-body">
+        <div style={{ color: 'var(--gray)', fontSize: 10 }}>
+          Waiting for data from both platforms...
+        </div>
+      </div>
+    )
+  }
+
+  const ksYesAsk = ks.yes_ask ?? 0
+  const ksNoAsk = ks.no_ask ?? 0
+  const pmDownAsk = pm.down_ask ?? 0
+  const pmUpAsk = pm.up_ask ?? 0
+  const ksStrike = ks.floor_strike
+  const pmStrike = pm.floor_strike
+
+  const strikeGap = (ksStrike && pmStrike) ? ksStrike - pmStrike : null
+
+  // Option 1: Buy Yes KS + Buy No (Down) PM
+  const cost1 = ksYesAsk + pmDownAsk
+  const profit1 = cost1 > 0 && cost1 < 1.0 ? (1.0 - cost1) : null
+  const noGap1 = (ksStrike && pmStrike) ? (ksStrike < pmStrike ? 'Yes' : 'No') : null
+
+  // Option 2: Buy No KS + Buy Yes (Up) PM
+  const cost2 = ksNoAsk + pmUpAsk
+  const profit2 = cost2 > 0 && cost2 < 1.0 ? (1.0 - cost2) : null
+  const noGap2 = (ksStrike && pmStrike) ? (pmStrike < ksStrike ? 'Yes' : 'No') : null
+
+  return (
+    <div className="detail-body">
+      <Label>SYNTHETIC OPTIONS</Label>
+
+      <Label>STRIKE PRICES</Label>
+      <Val>KS: {fmtStrike(ksStrike)}</Val>
+      <Val>PM: {fmtStrike(pmStrike)}</Val>
+
+      <Label>STRIKE GAP (KS − PM)</Label>
+      <Val className={strikeGap !== null ? (strikeGap >= 0 ? 'detail-profit' : '') : ''}>
+        {strikeGap !== null
+          ? `${strikeGap >= 0 ? '+' : ''}$${strikeGap.toFixed(2)}`
+          : '--'}
+      </Val>
+
+      <div style={{ height: 8 }} />
+
+      <Label>① KS YES + PM DOWN</Label>
+      <div style={{ fontSize: 11, lineHeight: 1.8, color: 'var(--amber)' }}>
+        <div>KS Yes Ask: ${ksYesAsk.toFixed(2)}</div>
+        <div>PM Down Ask: ${pmDownAsk.toFixed(2)}</div>
+      </div>
+      <Label>COMBINED COST</Label>
+      <Val className={cost1 < 1 ? 'detail-profit' : ''}>
+        {cost1 > 0 ? `$${cost1.toFixed(2)}` : '---'}
+      </Val>
+      <Label>PROFIT</Label>
+      <Val className={profit1 ? 'detail-profit' : ''}>
+        {profit1 !== null ? `$${profit1.toFixed(2)}` : '--'}
+      </Val>
+      <Label>NO-GAP</Label>
+      <Val className={noGap1 === 'Yes' ? 'detail-profit' : ''}>
+        {noGap1 ?? '--'}
+      </Val>
+
+      <div style={{ height: 8 }} />
+
+      <Label>② KS NO + PM UP</Label>
+      <div style={{ fontSize: 11, lineHeight: 1.8, color: 'var(--amber)' }}>
+        <div>KS No Ask: ${ksNoAsk.toFixed(2)}</div>
+        <div>PM Up Ask: ${pmUpAsk.toFixed(2)}</div>
+      </div>
+      <Label>COMBINED COST</Label>
+      <Val className={cost2 < 1 ? 'detail-profit' : ''}>
+        {cost2 > 0 ? `$${cost2.toFixed(2)}` : '---'}
+      </Val>
+      <Label>PROFIT</Label>
+      <Val className={profit2 ? 'detail-profit' : ''}>
+        {profit2 !== null ? `$${profit2.toFixed(2)}` : '--'}
+      </Val>
+      <Label>NO-GAP</Label>
+      <Val className={noGap2 === 'Yes' ? 'detail-profit' : ''}>
+        {noGap2 ?? '--'}
+      </Val>
+    </div>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function DetailPanel({ focused }: { focused: boolean }) {
-  const { activeView, activePanel, selectedIndex, arbResults, compareResults, pmEvents, ksEvents } = useStore()
+  const { activeView, activePanel, selectedIndex, arbResults, compareResults, pmEvents, ksEvents, btcSnapshot } = useStore()
 
   let content: React.ReactNode = null
 
-  if (selectedIndex !== null) {
+  if (activeView === 'BTC' && btcSnapshot) {
+    content = <BtcDetail snap={btcSnapshot} />
+  } else if (selectedIndex !== null) {
     if (activePanel === 2 && activeView === 'ARB' && arbResults[selectedIndex]) {
       content = <ArbDetail r={arbResults[selectedIndex]} />
     } else if (activePanel === 2 && activeView === 'CMP') {

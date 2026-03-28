@@ -882,6 +882,11 @@ class BtcStreamManager:
             log.info("ROLL START: %s -> %s", self._current_slug, new_slug)
             self._current_slug = new_slug
 
+            # Clear stale data so the UI doesn't show old window times
+            self._pm_data = None
+            self._pm_token_ids = []
+            self._kalshi_data = None
+
             pm_ok = False
             ks_ok = False
             roll_start = time.monotonic()
