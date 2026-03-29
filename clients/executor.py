@@ -211,29 +211,29 @@ _pm_client = None
 
 
 def _get_pm_client():
-    """Lazy-init the Polymarket CLOB client."""
+    """Lazy-init the Polymarket CLOB client. Derives API creds from private key."""
     global _pm_client
     if _pm_client is not None:
         return _pm_client
 
-    if not POLYMARKET_PRIVATE_KEY or not POLYMARKET_WALLET_ADDRESS:
+    if not polymarket_auth_available():
         return None
 
     try:
         from py_clob_client.client import ClobClient
 
-        # First create a temp client to derive API creds
+        # Derive API creds (key, secret, passphrase) from the private key.
+        # This calls Polymarket's API — the same creds as shown in the UI
+        # but with the secret/passphrase that aren't displayed after creation.
         temp = ClobClient(
             "https://clob.polymarket.com",
             key=POLYMARKET_PRIVATE_KEY,
             chain_id=137,
         )
-        creds = temp.create_or_derive_api_creds()
+        creds = temp.derive_api_key()
         log.info("Polymarket API creds derived for %s", POLYMARKET_WALLET_ADDRESS)
 
-        # Create the full client with creds
         # signature_type=1 (POLY_PROXY) for Polymarket proxy wallets
-        # signature_type=0 (EOA) for direct MetaMask/hardware wallets
         _pm_client = ClobClient(
             "https://clob.polymarket.com",
             key=POLYMARKET_PRIVATE_KEY,

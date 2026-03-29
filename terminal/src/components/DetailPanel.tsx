@@ -163,8 +163,8 @@ function EventDetail({ ev }: { ev: NormalizedEvent }) {
 
 // ── BTC Synthetic Options detail ─────────────────────────────────────────────
 
-function fmtStrike(v: number | undefined) {
-  if (v === undefined || v === 0) return 'N/A'
+function fmtStrike(v: number | null | undefined) {
+  if (v == null || v === 0) return 'N/A'
   return `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 

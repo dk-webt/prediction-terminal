@@ -609,11 +609,16 @@ class BtcStreamManager:
 
     async def _kalshi_recv_loop(self, ws):
         """Receive and process Kalshi WS messages."""
+        import websockets
+
         consecutive_timeouts = 0
         while self._running:
             try:
                 raw = await asyncio.wait_for(ws.recv(), timeout=60)
                 consecutive_timeouts = 0
+            except websockets.exceptions.ConnectionClosed:
+                log.info("KS WS connection closed")
+                return
             except asyncio.TimeoutError:
                 consecutive_timeouts += 1
                 log.warning("KS WS idle: no data for %ds (ticker=%s)",

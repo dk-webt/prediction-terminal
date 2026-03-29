@@ -1,54 +1,61 @@
 # Polymarket Trading API Setup
 
-## 1. Create/Use an Ethereum Wallet
+## 1. Get Your Keys from Polymarket
 
-Polymarket uses **proxy wallets** for accounts created via email/social login. Your trading funds live in this proxy wallet, not your MetaMask EOA.
+Polymarket uses **proxy wallets** for accounts created via email/social login. All keys come from Polymarket's settings, not MetaMask.
 
-To find your proxy wallet address:
+### Find your proxy wallet address
 1. Go to [polymarket.com](https://polymarket.com) and log in
-2. Open Settings/Profile — your **deposit address** is your proxy wallet address
+2. Open Settings → your **deposit address** is your proxy wallet address
 
-You'll need the **private key** associated with the account that controls this proxy wallet. If you signed up via MetaMask, export it from MetaMask: Settings > Security > Reveal Private Key.
+### Create API keys
+1. Go to Polymarket Settings → **API Keys** section
+2. Create new API relayer keys
+3. You'll get:
+   - **API Key** — your relayer API key
+   - **API Secret** — for HMAC signing
+   - **Passphrase** — API passphrase
+   - **Secret** (private key) — the signer private key (starts with `0x`)
 
-## 2. Fund Your Wallet on Polygon
+Save all of these — you'll need them for the `.env` file.
 
-- **USDC.e on Polygon** — the trading currency on Polymarket
-  - Bridge from Ethereum via [Polygon Bridge](https://wallet.polygon.technology/bridge) or buy directly on Polygon via an exchange
-- **Small amount of POL** (Polygon's gas token) — needed for the one-time token allowance approval (~0.01 POL)
+## 2. Add Keys to `.env`
 
-## 3. Approve Token Allowances (One-Time)
-
-Before your first API trade, you must approve Polymarket's exchange contracts to spend your USDC and Conditional Tokens:
-
-1. Go to [polymarket.com](https://polymarket.com) and connect your wallet
-2. Place any small trade via the web UI — this triggers the approval prompts
-3. Once approved, your API trades will work
-
-## 4. Add Keys to `.env`
+Add these to your `.env` file in the repo root:
 
 ```env
-# Polymarket execution
-POLYMARKET_PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
-POLYMARKET_WALLET_ADDRESS=0xYOUR_PROXY_WALLET_ADDRESS_HERE
+# Polymarket execution (all from Polymarket Settings → API Keys)
+POLYMARKET_PRIVATE_KEY=0xYOUR_SIGNER_SECRET_KEY
+POLYMARKET_WALLET_ADDRESS=0xYOUR_PROXY_DEPOSIT_ADDRESS
+POLYMARKET_API_KEY=your-api-key-here
+POLYMARKET_API_SECRET=your-api-secret-here
+POLYMARKET_API_PASSPHRASE=your-passphrase-here
 ```
 
-- **`POLYMARKET_PRIVATE_KEY`** — the raw hex private key (with `0x` prefix) from the wallet you used to sign up on Polymarket
-- **`POLYMARKET_WALLET_ADDRESS`** — your Polymarket **proxy/deposit address** (found in Polymarket settings), NOT your MetaMask address
+| Variable | Where to find it |
+|----------|-----------------|
+| `POLYMARKET_PRIVATE_KEY` | API Keys → **Secret** (the signer private key) |
+| `POLYMARKET_WALLET_ADDRESS` | Settings → **Deposit address** (proxy wallet) |
+| `POLYMARKET_API_KEY` | API Keys → **API Key** |
+| `POLYMARKET_API_SECRET` | API Keys → **API Secret** |
+| `POLYMARKET_API_PASSPHRASE` | API Keys → **Passphrase** |
 
-## 5. Install Dependencies
+## 3. Install Dependencies
 
 ```bash
 cd /home/dastiger/prediciton
 python3 -m pip install -r requirements.txt --break-system-packages
 ```
 
-This installs `py-clob-client`, the official Polymarket CLOB client library.
+## 4. Verify Setup
 
-## 6. First Run — API Credential Derivation
+```bash
+python3 -c "from clients.executor import polymarket_auth_available; print('PM auth:', polymarket_auth_available())"
+```
 
-On first use, `py-clob-client` automatically derives your CLOB API credentials (key, secret, passphrase) from your private key via an EIP-712 signature. This happens once and is cached in memory for the session.
+Should print `PM auth: True`.
 
-## 7. Test with a Small Order
+## 5. Test with a Small Order
 
 ```
 BTC                          # Start the BTC watcher
@@ -74,5 +81,5 @@ Y                             # Confirm execution
 
 - **Never commit `.env` to git** (already in `.gitignore`)
 - Use a **dedicated trading wallet** with only the funds you need
-- The private key is only used locally — it never leaves your machine
+- All keys are only used locally — they never leave your machine
 - All orders require Y/N confirmation before execution

@@ -73,8 +73,11 @@ KALSHI_API_KEY=your_kalshi_api_key_here
 KALSHI_PRIVATE_KEY_PATH=~/.ssh/kalshi_private_key.pem
 
 # Polymarket execution (optional — see docs/polymarket-setup.md)
-POLYMARKET_PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
+POLYMARKET_PRIVATE_KEY=0xYOUR_SIGNER_SECRET_KEY
 POLYMARKET_WALLET_ADDRESS=0xYOUR_PROXY_WALLET_ADDRESS_HERE
+POLYMARKET_API_KEY=your-api-key
+POLYMARKET_API_SECRET=your-api-secret
+POLYMARKET_API_PASSPHRASE=your-passphrase
 ```
 
 ### 4. Terminal (Electron) dependencies
