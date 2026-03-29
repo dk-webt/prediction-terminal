@@ -264,24 +264,27 @@ def place_polymarket_order(
         return {"success": False, "error": "Polymarket keys not configured or client init failed"}
 
     try:
-        from py_clob_client.clob_types import OrderArgs, MarketOrderArgs, OrderType
+        from py_clob_client.clob_types import (
+            OrderArgs, MarketOrderArgs, OrderType, PartialCreateOrderOptions,
+        )
         from py_clob_client.order_builder.constants import BUY, SELL
 
         pm_side = BUY if side.upper() == "BUY" else SELL
+        opts = PartialCreateOrderOptions(tick_size="0.01", neg_risk=False)
 
         if order_type == "market" or price is None:
-            # Market order — amount is in dollars for buys, shares for sells
-            resp = client.create_and_post_market_order(
+            # Market order — create+sign, then post separately
+            signed = client.create_market_order(
                 MarketOrderArgs(
                     token_id=token_id,
-                    amount=size if pm_side == BUY else size,
+                    amount=size,
                     side=pm_side,
                 ),
-                options={"tick_size": "0.01", "neg_risk": False},
-                order_type=OrderType.FOK,
+                options=opts,
             )
+            resp = client.post_order(signed, orderType=OrderType.FOK)
         else:
-            # Limit order
+            # Limit order — create_and_post_order always posts as GTC
             resp = client.create_and_post_order(
                 OrderArgs(
                     token_id=token_id,
@@ -289,8 +292,7 @@ def place_polymarket_order(
                     size=size,
                     side=pm_side,
                 ),
-                options={"tick_size": "0.01", "neg_risk": False},
-                order_type=OrderType.GTC,
+                options=opts,
             )
 
         if isinstance(resp, dict) and resp.get("errorMsg"):

@@ -1,0 +1,309 @@
+Data Stream & Execution V2 — Implementation Plan
+==================================================
+
+Current state: WS connections are torn down and rebuilt on every 15-min roll.
+Orders are fire-and-forget (no fill tracking). Per-request RSA signing is correct.
+
+This plan addresses 3 gaps:
+  1. Dynamic subscriptions (no reconnect on roll)
+  2. Kalshi fill/order tracking via private WS channels
+  3. Polymarket order fill confirmation
+
+
+================================================================================
+1. DYNAMIC SUBSCRIPTIONS (eliminates reconnect on roll)
+================================================================================
+
+Goal: Keep WS connections alive across 15-min window rolls. Swap tickers/tokens
+in-place instead of disconnecting and reconnecting.
+
+── 1A. Kalshi: update_subscription ─────────────────────────────────────────────
+
+Current behavior (btc_watcher.py):
+  - _window_roll_loop sets _ks_reconnect event
+  - _kalshi_ws_loop sees the event, drops the connection, reconnects with new auth
+  - Full reconnect = new TCP + TLS handshake + RSA-PSS auth + subscribe
+
+New behavior:
+  - Track SIDs returned from initial subscribe response
+  - On roll, send update_subscription to add new ticker, then delete old ticker
+  - No reconnect needed
+
+Implementation:
+  a) Store SIDs from subscribe response:
+     - After sending subscribe for ["ticker", "orderbook_delta"], parse server
+       responses of type "subscribed" and store { channel_name: sid }
+     - e.g. self._ks_sids = {"ticker": 1, "orderbook_delta": 2}
+
+  b) New method: _kalshi_update_subscription(ws, old_ticker, new_ticker)
+     - Send two update_subscription commands per SID:
+       {
+         "id": <next_id>,
+         "cmd": "update_subscription",
+         "params": {
+           "sids": [sid],
+           "market_tickers": [new_ticker],
+           "action": "add_markets",
+           "send_initial_snapshot": true
+         }
+       }
+       then:
+       {
+         "id": <next_id>,
+         "cmd": "update_subscription",
+         "params": {
+           "sids": [sid],
+           "market_tickers": [old_ticker],
+           "action": "delete_markets"
+         }
+       }
+
+  c) Change _window_roll_loop:
+     - Instead of setting _ks_reconnect event, call _kalshi_update_subscription
+       directly (need to pass ws reference or use a shared ref)
+     - Store ws reference on self (self._ks_ws) so roll loop can send commands
+
+  d) Change _kalshi_ws_loop:
+     - Remove the roll_task / _ks_reconnect.wait() pattern
+     - Keep only the recv loop + timeout/error handling
+     - Reconnect only on actual connection failure
+
+  e) Fallback: If update_subscription fails or server returns error, set a flag
+     to trigger full reconnect (keep current reconnect logic as fallback)
+
+Message format reference:
+  Subscribe response:  {"id": 1, "type": "subscribed", "msg": {"channel": "ticker", "sid": 1}}
+  Update sub:          {"id": N, "cmd": "update_subscription", "params": {"sids": [1], ...}}
+  Unsubscribe:         {"id": N, "cmd": "unsubscribe", "params": {"sids": [1, 2]}}
+
+
+── 1B. Polymarket: subscribe/unsubscribe on existing connection ────────────────
+
+Current behavior:
+  - _window_roll_loop sets _pm_reconnect event
+  - _pm_ws_loop drops connection, reconnects, sends initial handshake with new tokens
+
+New behavior:
+  - On roll, send subscribe for new token IDs, then unsubscribe old ones
+  - No reconnect needed
+
+Implementation:
+  a) Store ws reference: self._pm_ws
+
+  b) New method: _pm_swap_tokens(old_tokens, new_tokens)
+     - Send on existing connection:
+       {"operation": "subscribe", "assets_ids": new_tokens}
+       {"operation": "unsubscribe", "assets_ids": old_tokens}
+     - Note: server sends NO acknowledgment — success is silent
+
+  c) Change _window_roll_loop:
+     - Instead of setting _pm_reconnect, call _pm_swap_tokens
+     - Update self._pm_token_ids after swap
+
+  d) Change _pm_ws_loop:
+     - Remove the roll_task / _pm_reconnect.wait() pattern
+     - Keep recv + ping loops
+     - Reconnect only on actual connection failure or inactivity timeout
+
+  e) Fallback: If ws.send raises an exception during swap, trigger full reconnect
+
+  f) Initial handshake stays the same (first connect still sends
+     {"assets_ids": [...], "type": "market"})
+
+Note: No "type" field on subsequent subscribe/unsubscribe messages.
+      Only the initial handshake uses "type": "market".
+
+
+── 1C. Roll loop changes ──────────────────────────────────────────────────────
+
+Current _window_roll_loop flow:
+  1. Sleep until boundary
+  2. Clear PM data, set _rolling = True
+  3. Retry loop: REST fetch both platforms until new contracts found
+  4. Set _pm_reconnect / _ks_reconnect events
+  5. Poll for PM strike price
+
+New flow:
+  1. Sleep until boundary
+  2. Set _rolling = True (keep old data visible)
+  3. Retry loop: REST fetch both platforms until new contracts found
+  4. When PM ready: call _pm_swap_tokens(old_tokens, new_tokens)
+  5. When KS ready: call _kalshi_update_subscription(ws, old_ticker, new_ticker)
+  6. Set _rolling = False
+  7. Poll for PM strike price
+
+Benefits:
+  - No TCP/TLS reconnect overhead (~200-500ms saved per roll)
+  - No re-auth overhead for Kalshi
+  - Smoother transition — old data keeps flowing until new subscription active
+  - Eliminates "Task was destroyed but pending" warnings from Event.wait()
+
+
+================================================================================
+2. KALSHI FILL & ORDER TRACKING (private WS channels)
+================================================================================
+
+Goal: Get real-time notifications when orders are filled, canceled, or resting.
+Currently we only know the result of the initial REST POST response.
+
+── 2A. Subscribe to fill + user_orders channels ───────────────────────────────
+
+These are private channels — require RSA-PSS auth at WS handshake time.
+Our existing Kalshi WS connection already authenticates, so we can subscribe
+on the same connection.
+
+Implementation:
+  a) After initial ticker/orderbook subscribe, also subscribe to:
+     {
+       "id": 3,
+       "cmd": "subscribe",
+       "params": { "channels": ["fill"] }
+     }
+     {
+       "id": 4,
+       "cmd": "subscribe",
+       "params": { "channels": ["user_orders"] }
+     }
+     (Omit market_ticker to receive for all markets)
+
+  b) Store SIDs for these channels too
+
+  c) Handle new message types in _kalshi_recv_loop:
+     - "fill": order was matched
+       Key fields: trade_id, order_id, market_ticker, side, yes_price_dollars,
+                   count_fp, action, is_taker
+     - "user_order": order lifecycle update
+       Key fields: order_id, ticker, status (resting/canceled/executed),
+                   fill_count_fp, remaining_count_fp
+
+  d) New callback: self._on_fill(fill_data) and self._on_order_update(order_data)
+     - Push to frontend via /ws/trade WebSocket
+     - Frontend can show toast/notification for fills
+
+  e) On roll, fill/user_orders subscriptions persist (they're not market-scoped
+     when subscribed without market_ticker)
+
+
+── 2B. Frontend integration ───────────────────────────────────────────────────
+
+  a) New message types on /ws/trade:
+     - {"type": "ks_fill", "data": {...}}
+     - {"type": "ks_order_update", "data": {...}}
+
+  b) Store in Zustand: orderHistory, activeFills
+
+  c) Show in UI:
+     - Toast notification on fill
+     - Order status indicator (resting → filled/canceled)
+     - Fill history in detail panel (optional, lower priority)
+
+
+================================================================================
+3. POLYMARKET ORDER CONFIRMATION
+================================================================================
+
+Goal: Confirm PM order fills beyond the REST response.
+
+── 3A. User channel WebSocket ─────────────────────────────────────────────────
+
+Polymarket has a separate authenticated WS for user events:
+  wss://ws-subscriptions-clob.polymarket.com/ws/user
+
+This requires API key auth headers:
+  - POLY_ADDRESS, POLY_SIGNATURE, POLY_TIMESTAMP, POLY_NONCE
+
+Implementation:
+  a) New connection in BtcStreamManager (or separate manager):
+     - Connect to /ws/user with auth headers
+     - Subscribe with: {"type": "user", "markets": [condition_id]}
+     - Receives fill/order update messages
+
+  b) This is lower priority than Kalshi fills because:
+     - PM market orders (FOK) either fill completely or fail — no resting state
+     - The REST response from post_order already confirms fill/reject
+     - User channel is mainly useful for limit orders (GTC) that may fill later
+
+  c) Defer this to after Kalshi fill tracking is working
+
+
+── 3B. REST polling fallback (simpler alternative) ────────────────────────────
+
+  If the user WS is too complex for now:
+  - After placing a PM order, poll GET /orders?market=<condition_id> every few seconds
+  - Check order status until filled/expired/canceled
+  - Simpler but adds latency
+
+
+================================================================================
+4. IMPLEMENTATION ORDER
+================================================================================
+
+Phase 1: Dynamic subscriptions (biggest impact on roll stability)
+  Step 1: Implement _kalshi_update_subscription + store SIDs
+  Step 2: Implement _pm_swap_tokens
+  Step 3: Refactor _window_roll_loop to use swaps instead of reconnects
+  Step 4: Keep reconnect as fallback for connection errors
+  Step 5: Test across multiple roll cycles
+
+Phase 2: Kalshi fill tracking
+  Step 6: Subscribe to fill + user_orders on existing KS WS
+  Step 7: Handle fill/user_order messages in recv loop
+  Step 8: Push fill events to frontend via /ws/trade
+  Step 9: Frontend toast/notification for fills
+
+Phase 3: Polymarket order confirmation (lower priority)
+  Step 10: Evaluate if REST polling is sufficient for FOK orders
+  Step 11: If needed, implement /ws/user connection with auth
+  Step 12: Push PM fill events to frontend
+
+Phase 4: Cleanup
+  Step 13: Remove _pm_reconnect / _ks_reconnect Event objects
+  Step 14: Remove old reconnect-on-roll code paths (keep error reconnect)
+  Step 15: Update CLAUDE.md WebSocket architecture docs
+
+
+================================================================================
+5. FILES TO MODIFY
+================================================================================
+
+clients/btc_watcher.py
+  - _kalshi_ws_loop: store ws ref, parse SIDs, remove roll reconnect
+  - _kalshi_recv_loop: handle fill + user_order message types
+  - _pm_ws_loop: store ws ref, remove roll reconnect
+  - _window_roll_loop: use swap methods instead of reconnect events
+  - New: _kalshi_update_subscription(), _pm_swap_tokens()
+
+clients/executor.py
+  - No changes needed for dynamic subs
+  - Add fill callback registration (Phase 2)
+
+api_server.py
+  - Route fill/order events from btc_watcher to /ws/trade clients (Phase 2)
+
+terminal/src/ws/ConnectionManager.ts
+  - Handle new message types: ks_fill, ks_order_update (Phase 2)
+
+terminal/src/store.ts
+  - Add orderHistory, activeFills state (Phase 2)
+
+terminal/src/components/DetailPanel.tsx
+  - Fill notification display (Phase 2)
+
+
+================================================================================
+6. RISKS & MITIGATIONS
+================================================================================
+
+Risk: update_subscription may not work as expected for rapid ticker changes
+  Mitigation: Keep full reconnect as fallback, log subscription responses
+
+Risk: PM subscribe/unsubscribe has no server acknowledgment (silent success)
+  Mitigation: Set a timer after swap — if no data arrives within 5s for new
+  tokens, fall back to full reconnect
+
+Risk: Kalshi SIDs may not persist across certain server-side events
+  Mitigation: If recv loop gets unexpected errors after swap, trigger reconnect
+
+Risk: fill channel may have high volume on busy markets
+  Mitigation: Subscribe without market_ticker initially, scope to active
+  ticker if volume is too high
