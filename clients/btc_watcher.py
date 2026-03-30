@@ -401,7 +401,6 @@ class BtcStreamManager:
         await manager.stop()
     """
 
-    KALSHI_POLL_INTERVAL = 3     # seconds — REST fallback polling rate
     PM_PING_INTERVAL = 8         # seconds between PM WS PING heartbeats
     PM_INACTIVITY_TIMEOUT = 120  # seconds before force-reconnect
     MIN_PUSH_INTERVAL = 0.5      # seconds — throttle pushes to frontend
@@ -468,13 +467,12 @@ class BtcStreamManager:
         # Push initial snapshot immediately
         await self._push_update(force=True)
 
-        # Start background tasks — use WS for Kalshi if keys configured, else REST
+        # Start background tasks
         if kalshi_ws_available():
             log.info("Kalshi WebSocket auth configured — using live streaming")
             self._tasks.append(asyncio.create_task(self._kalshi_ws_loop()))
         else:
-            log.info("Kalshi RSA keys not configured — falling back to REST polling")
-            self._tasks.append(asyncio.create_task(self._kalshi_poll_loop()))
+            log.warning("Kalshi RSA keys not configured — no Kalshi streaming available")
 
         self._tasks.append(asyncio.create_task(self._pm_ws_loop()))
         self._tasks.append(asyncio.create_task(self._window_roll_loop()))
@@ -520,9 +518,8 @@ class BtcStreamManager:
         if self._ks_last_recv > 0:
             ks_age = now - self._ks_last_recv
             if ks_age > self.STALE_THRESHOLD and not self._ks_stale_logged:
-                log.warning("KS STALE: no Kalshi data for %.0fs (ticker=%s, mode=%s)",
-                            ks_age, self._kalshi_ticker,
-                            "websocket" if kalshi_ws_available() else "polling")
+                log.warning("KS STALE: no Kalshi data for %.0fs (ticker=%s)",
+                            ks_age, self._kalshi_ticker)
                 self._ks_stale_logged = True
         if self._pm_last_recv > 0:
             pm_age = now - self._pm_last_recv
@@ -545,7 +542,7 @@ class BtcStreamManager:
             "polymarket": self._pm_data,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "streaming": True,
-            "kalshi_mode": "websocket" if kalshi_ws_available() else "polling",
+            "kalshi_mode": "websocket",
             "rolling": self._rolling,
             "kalshi_last_update": self._ks_last_update,
             "polymarket_last_update": self._pm_last_update,
@@ -569,9 +566,9 @@ class BtcStreamManager:
         while self._running:
             auth_headers = _kalshi_ws_auth_headers()
             if not auth_headers:
-                log.warning("Kalshi WS auth failed, falling back to REST poll")
-                await self._kalshi_poll_loop()
-                return
+                log.error("Kalshi WS auth failed — check KALSHI_API_KEY and KALSHI_PRIVATE_KEY_PATH")
+                await asyncio.sleep(30)
+                continue
 
             try:
                 self._ks_cmd_id = 0
@@ -836,25 +833,6 @@ class BtcStreamManager:
         except Exception as e:
             log.warning("KS update_subscription failed: %s", e)
             return False
-
-    # ── Kalshi: REST polling fallback ─────────────────────────────────────────
-
-    async def _kalshi_poll_loop(self):
-        """Poll Kalshi REST API — used when WS auth keys not configured."""
-        while self._running:
-            try:
-                data = await asyncio.to_thread(fetch_kalshi_btc_15m)
-                if data and not data.get("error"):
-                    new_ticker = data.get("ticker", "")
-                    if new_ticker != self._kalshi_ticker:
-                        log.info("KS poll: new ticker %s (was %s)", new_ticker, self._kalshi_ticker)
-                    self._kalshi_data = data
-                    self._kalshi_ticker = new_ticker
-                    self._mark_ks_recv()
-                    await self._push_update()
-            except Exception as e:
-                log.debug("Kalshi poll error: %s", e)
-            await asyncio.sleep(self.KALSHI_POLL_INTERVAL)
 
     # ── Polymarket: WebSocket streaming ───────────────────────────────────────
 
