@@ -298,14 +298,13 @@ def place_polymarket_order(
         neg_risk = False
         tick_size = "0.01"
         try:
-            market_info = client.get_order_book(token_id)
-            if isinstance(market_info, dict):
-                neg_risk = market_info.get("neg_risk", False)
-                ts = market_info.get("min_tick_size")
-                if ts:
-                    tick_size = str(ts)
-        except Exception:
-            pass
+            neg_risk = client.get_neg_risk(token_id)
+        except Exception as e:
+            log.warning("PM get_neg_risk failed: %s", e)
+        try:
+            tick_size = str(client.get_tick_size(token_id))
+        except Exception as e:
+            log.warning("PM get_tick_size failed: %s", e)
         log.info("PM order: token=%s...  side=%s size=%s price=%s neg_risk=%s tick=%s",
                  token_id[:20], pm_side, size, price, neg_risk, tick_size)
         opts = PartialCreateOrderOptions(tick_size=tick_size, neg_risk=neg_risk)
