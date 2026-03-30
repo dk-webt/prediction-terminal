@@ -2,7 +2,7 @@ Execution Layer V2 — WebSocket-Enhanced Order Tracking
 ======================================================
 
 Goal: Add real-time fill/order tracking via WebSockets on both platforms.
-Order submission remains REST — neither platform supports WS order placement.
+Order submission is REST currently; Kalshi FIX API is the future target (Step 6).
 
 Current flow:
   User → BUY KS YES 10 → REST POST → HTTP response → done (no further tracking)
@@ -145,9 +145,9 @@ STEP 5: Order State Management & Edge Cases
 ================================================================================
 
 Tasks:
-  [ ] Correlate REST order_id with WS fill events:
-      - Kalshi: REST response contains order_id, fill msg has order_id
-      - Polymarket: REST response contains order ID, trade event has market + side
+  [x] Correlate REST order_id with WS fill events: DONE
+      - _active_orders dict tracks by server order_id + client_order_id
+      - _on_ks_fill/_on_ks_order match and enrich broadcasts
 
   [ ] Handle partial fills:
       - KS user_order has fill_count_fp + remaining_count_fp
@@ -179,19 +179,93 @@ Tasks:
 
 
 ================================================================================
+STEP 6: Kalshi FIX API — Order Placement via FIX Protocol
+================================================================================
+
+Goal: Replace REST order placement with Kalshi's FIX (Financial Information
+eXchange) protocol for lower latency and richer order management.
+
+Background:
+  FIX is the industry-standard protocol used by institutional trading systems.
+  Kalshi offers a FIX API that supports order entry, modification, cancellation,
+  RFQ, and drop copy — all over a persistent session instead of per-request HTTP.
+  Docs: https://docs.kalshi.com/fix
+
+Advantages over REST:
+  - Persistent session — no per-request TCP/TLS + RSA signing overhead
+  - Submit, modify, and cancel orders through standard FIX messages
+  - Real-time execution reports on the same session (no separate WS needed)
+  - Drop copy session for order event recovery (replay missed fills)
+  - RFQ support for market making
+  - Order groups with automatic cancellation and contract limits
+  - Industry standard — compatible with existing FIX libraries/engines
+
+Prerequisites:
+  - Contact institutional@kalshi.com for FIX API access
+  - Generate 2048-bit RSA PKCS#8 key pair
+  - Upload public key to receive FIX API key
+  - Download Kalshi FIX Dictionary (XML) for message specs
+
+Tasks:
+  [ ] Obtain FIX API access from Kalshi (institutional@kalshi.com)
+
+  [ ] Evaluate Python FIX libraries:
+      - quickfix (most established, C++ engine with Python bindings)
+      - simplefix (lightweight, pure Python)
+      - Custom implementation if neither fits
+
+  [ ] Implement FIX session manager:
+      - Logon with RSA key authentication
+      - Heartbeat / session keep-alive
+      - Logout and reconnection handling
+      - Sequence number management
+
+  [ ] Implement FIX order entry:
+      - NewOrderSingle (35=D) for order placement
+      - OrderCancelRequest (35=F) for cancellation
+      - OrderCancelReplaceRequest (35=G) for modification
+      - Parse ExecutionReport (35=8) for fill/status updates
+
+  [ ] Implement drop copy session:
+      - Separate FIX session for order event recovery
+      - Replay missed fills on reconnection
+
+  [ ] Migrate executor.py:
+      - Replace place_kalshi_order() REST call with FIX NewOrderSingle
+      - FIX execution reports replace WS fill/user_orders channels
+      - Keep REST as fallback if FIX session is down
+
+  [ ] Update api_server.py:
+      - Route FIX execution reports to /ws/trade broadcast
+      - Correlate with _active_orders tracking
+
+Files:
+  clients/kalshi_fix.py (new) — FIX session manager + order entry
+  clients/executor.py — switch Kalshi order path to FIX
+  api_server.py — route FIX execution reports to frontend
+
+Note: This replaces both REST order placement AND WS fill/order tracking
+for Kalshi with a single FIX session. The WS connection would still be
+used for market data (ticker, orderbook_delta) unless Kalshi also offers
+market data over FIX.
+
+
+================================================================================
 IMPLEMENTATION ORDER
 ================================================================================
 
 Priority: Step 1 first (no new connections, biggest bang for buck)
 
-  Step 1: Kalshi fill tracking      — 1 file change, existing WS
+  Step 1: Kalshi fill tracking      — DONE (fill + user_orders on existing WS)
   Step 2: PM user channel           — new WS connection, needs API creds
   Step 3: Wire to frontend          — plumbing, no new logic
   Step 4: Frontend display          — UI work
   Step 5: Edge cases                — hardening
+  Step 6: Kalshi FIX API            — replace REST orders with FIX protocol
 
 Each step is independently useful:
-  - After Step 1 alone: Kalshi fills show in server logs
+  - After Step 1 alone: Kalshi fills show in server logs ✓
   - After Steps 1+3: Kalshi fills reach the frontend
   - After Steps 1-4: Full UI for Kalshi fills
-  - After all steps: Both platforms, all edge cases handled
+  - After Step 5: Both platforms, all edge cases handled
+  - After Step 6: Lowest latency Kalshi execution via FIX
