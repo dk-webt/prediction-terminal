@@ -253,7 +253,7 @@ def _get_pm_client():
                 chain_id=137,
             )
             creds = temp.create_or_derive_api_creds()
-            log.info("Polymarket API creds derived from private key: %s", creds.api_key[:10])
+            log.info("Polymarket API creds derived from private key")
 
         # signature_type=1 (POLY_PROXY) — MetaMask signs, proxy wallet holds funds
         # POLYMARKET_WALLET_ADDRESS must be the proxy/profile address (not MetaMask)
