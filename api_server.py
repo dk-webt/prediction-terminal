@@ -420,6 +420,62 @@ def _track_order(platform: str, order_info: dict, rest_response: dict):
                      platform, server_order_id, client_order_id)
         if client_order_id and client_order_id != server_order_id:
             _active_orders[client_order_id] = entry
+    elif platform == "polymarket":
+        # PM REST response: {"orderID": "...", ...} or {"id": "...", ...}
+        order_id = resp_data.get("orderID", resp_data.get("id", ""))
+        entry = {
+            "platform": platform,
+            "server_order_id": order_id,
+            "token_id": order_info.get("token_id", ""),
+            "action": order_info.get("action", ""),
+            "side": order_info.get("side", ""),
+            "count": order_info.get("count", 0),
+            "price": order_info.get("price"),
+            "status": "submitted",
+        }
+        if order_id:
+            _active_orders[order_id] = entry
+            log.info("TRACK ORDER: %s (order_id=%s)", platform, order_id)
+
+
+# ── PM heartbeat for GTC orders ──────────────────────────────────────────────
+
+_pm_heartbeat_task: "asyncio.Task | None" = None
+_pm_heartbeat_id: str | None = None
+_pm_resting_orders: set = set()
+
+
+async def _pm_heartbeat_loop():
+    """Send PM heartbeat every 5s while GTC orders are resting."""
+    global _pm_heartbeat_id
+    from clients.executor import _get_pm_client
+    client = _get_pm_client()
+    if not client:
+        log.warning("PM heartbeat: no client available")
+        return
+    log.info("PM heartbeat loop started")
+    while _pm_resting_orders:
+        try:
+            resp = await asyncio.to_thread(client.post_heartbeat, _pm_heartbeat_id)
+            if isinstance(resp, dict):
+                _pm_heartbeat_id = resp.get("heartbeat_id", _pm_heartbeat_id)
+        except Exception as e:
+            log.warning("PM heartbeat failed: %s", e)
+        await asyncio.sleep(5)
+    log.info("PM heartbeat loop stopped (no resting orders)")
+
+
+def _start_pm_heartbeat(order_id: str):
+    """Start PM heartbeat loop when a GTC order is placed."""
+    global _pm_heartbeat_task
+    _pm_resting_orders.add(order_id)
+    if _pm_heartbeat_task is None or _pm_heartbeat_task.done():
+        _pm_heartbeat_task = asyncio.create_task(_pm_heartbeat_loop())
+
+
+def _stop_pm_heartbeat(order_id: str):
+    """Stop tracking a PM order. Loop exits when no resting orders remain."""
+    _pm_resting_orders.discard(order_id)
 
 
 async def _on_ks_fill(data: dict):
@@ -434,6 +490,40 @@ async def _on_ks_fill(data: dict):
                  order_id, tracked["action"], tracked["side"],
                  data.get("count_fp", "?"), data.get("yes_price_dollars", "?"))
     await _trade_broadcast("ks_fill", data)
+
+
+async def _on_pm_fill(data: dict):
+    """Callback for PM trade events (MATCHED/MINED/CONFIRMED/FAILED)."""
+    status = data.get("status", "")
+    if status == "CONFIRMED":
+        # Look up by asset_id or market (condition_id)
+        # PM doesn't give a simple order_id in trade events like Kalshi
+        data["_pm_confirmed"] = True
+    await _trade_broadcast("pm_fill", data)
+
+
+async def _on_pm_order(data: dict):
+    """Callback for PM order events (PLACEMENT/UPDATE/CANCELLATION)."""
+    order_id = data.get("id", "")
+    event_type = data.get("type", "")
+    tracked = _active_orders.get(order_id)
+    if tracked:
+        data["_tracked"] = True
+        data["_order"] = tracked
+        if event_type == "CANCELLATION":
+            tracked["status"] = "canceled"
+            _active_orders.pop(order_id, None)
+            _stop_pm_heartbeat(order_id)
+        elif event_type == "UPDATE":
+            size_matched = float(data.get("size_matched", 0))
+            original_size = float(data.get("original_size", 0))
+            if original_size > 0 and size_matched >= original_size:
+                tracked["status"] = "filled"
+                _active_orders.pop(order_id, None)
+                _stop_pm_heartbeat(order_id)
+            else:
+                tracked["status"] = "partial"
+    await _trade_broadcast("pm_order_update", data)
 
 
 async def _on_ks_order(data: dict):
@@ -466,6 +556,8 @@ async def _btc_ensure_started():
         on_update=_btc_broadcast,
         on_ks_fill=_on_ks_fill,
         on_ks_order=_on_ks_order,
+        on_pm_fill=_on_pm_fill,
+        on_pm_order=_on_pm_order,
     )
     await _btc_stream.start()
     log.info("BTC stream started (module-level)")
@@ -665,14 +757,34 @@ async def websocket_trade(websocket: WebSocket):
                         else:
                             from clients.executor import place_polymarket_order
                             pm_side = "BUY" if order["action"] == "buy" else "SELL"
+                            # For PM market orders, compute price cap from live data
+                            pm_price = order["price"]
+                            if order["order_type"] == "market" and pm_price is None and _btc_stream:
+                                pm_data = _btc_stream._pm_data
+                                if pm_data and not pm_data.get("error"):
+                                    pm_order_side = order["side"]
+                                    if pm_order_side in ("up", "yes"):
+                                        best_ask = pm_data.get("up_ask", 0)
+                                    else:
+                                        best_ask = pm_data.get("down_ask", 0)
+                                    if best_ask > 0:
+                                        pm_price = round(best_ask + 0.02, 2)
+                                        log.info("ORDER %s: PM market cap: best_ask=%.2f cap=%.2f",
+                                                 order_id, best_ask, pm_price)
                             result = await asyncio.to_thread(
                                 place_polymarket_order,
                                 order["token_id"], pm_side,
-                                order["count"], order["price"], order["order_type"],
+                                order["count"], pm_price, order["order_type"],
                             )
                         if result.get("success"):
                             log.info("ORDER %s: success — %s", order_id, result.get("data", ""))
                             _track_order(order["platform"], order, result)
+                            # Start PM heartbeat for GTC limit orders
+                            if order["platform"] == "polymarket" and order["order_type"] == "limit":
+                                resp_data = result.get("data", {})
+                                pm_oid = resp_data.get("orderID", resp_data.get("id", ""))
+                                if pm_oid:
+                                    _start_pm_heartbeat(pm_oid)
                         else:
                             log.warning("ORDER %s: failed — %s", order_id, result.get("error", "unknown"))
                         await websocket.send_json({"type": "btc_order_result", **result})

@@ -193,6 +193,7 @@ PM_GAMMA = "https://gamma-api.polymarket.com"
 PM_CLOB = "https://clob.polymarket.com"
 PM_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 PM_CRYPTO_PRICE = "https://polymarket.com/api/crypto/crypto-price"
+PM_USER_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/user"
 
 
 def fetch_pm_strike_price(event_start_time: str, end_time: str) -> float | None:
@@ -354,6 +355,7 @@ def fetch_polymarket_btc_15m() -> dict | None:
         "resolution_source": market.get("resolutionSource", ""),
         "url": f"https://polymarket.com/event/{slug}",
         "token_ids": tokens[:2] if len(tokens) >= 2 else [],
+        "condition_id": market.get("conditionId", ""),
     }
 
 
@@ -408,10 +410,13 @@ class BtcStreamManager:
     ROLL_MAX_RETRIES = 60        # max retries (~30s max wait for slow platforms)
     STALE_THRESHOLD = 10         # seconds — log warning when platform data goes stale
 
-    def __init__(self, on_update, on_ks_fill=None, on_ks_order=None):
+    def __init__(self, on_update, on_ks_fill=None, on_ks_order=None,
+                 on_pm_fill=None, on_pm_order=None):
         self._on_update = on_update
         self._on_ks_fill = on_ks_fill        # async callback for Kalshi fill events
         self._on_ks_order = on_ks_order      # async callback for Kalshi order updates
+        self._on_pm_fill = on_pm_fill        # async callback for PM trade events
+        self._on_pm_order = on_pm_order      # async callback for PM order events
         self._running = False
         self._tasks: list[asyncio.Task] = []
         self._last_push_time: float = 0.0
@@ -421,6 +426,7 @@ class BtcStreamManager:
         self._kalshi_ticker: str = ""  # current market ticker for KS WS subscription
         self._pm_data: dict | None = None
         self._pm_token_ids: list[str] = []
+        self._pm_condition_id: str = ""  # condition ID for PM user channel
         self._current_slug: str = ""
         self._rolling = False  # True while window roll is in progress
         self._ks_last_update: str = ""   # ISO timestamp of last Kalshi data
@@ -435,8 +441,12 @@ class BtcStreamManager:
         self._ks_sids: dict[str, int] = {}  # channel_name -> subscription ID
         self._ks_cmd_id: int = 0         # incrementing command ID for KS WS
 
+        # Polymarket WS state
+        self._pm_ws = None               # active market channel WS reference
+
         # Signals WS loops to reconnect with new tokens/tickers
         self._pm_reconnect = asyncio.Event()
+        self._pm_user_reconnect = asyncio.Event()  # separate for user channel
         self._ks_reconnect = asyncio.Event()
 
     async def start(self):
@@ -456,6 +466,7 @@ class BtcStreamManager:
 
         if self._pm_data and not self._pm_data.get("error"):
             self._pm_token_ids = self._pm_data.get("token_ids", [])
+            self._pm_condition_id = self._pm_data.get("condition_id", "")
             self._current_slug = self._pm_data.get("slug", "")
             self._mark_pm_recv()
 
@@ -476,6 +487,14 @@ class BtcStreamManager:
 
         self._tasks.append(asyncio.create_task(self._pm_ws_loop()))
         self._tasks.append(asyncio.create_task(self._window_roll_loop()))
+
+        # Start PM user channel for fill/order tracking if creds configured
+        from config import POLYMARKET_API_KEY, POLYMARKET_API_SECRET, POLYMARKET_API_PASSPHRASE
+        if POLYMARKET_API_KEY and POLYMARKET_API_SECRET and POLYMARKET_API_PASSPHRASE:
+            log.info("PM User WS auth configured — starting fill/order tracking")
+            self._tasks.append(asyncio.create_task(self._pm_user_ws_loop()))
+        else:
+            log.warning("PM API creds not configured — no PM fill/order tracking")
 
     async def stop(self):
         """Stop all streaming tasks."""
@@ -862,9 +881,11 @@ class BtcStreamManager:
                     ping_timeout=None,
                     close_timeout=5,
                 ) as ws:
+                    self._pm_ws = ws
                     sub_msg = json.dumps({
                         "assets_ids": connected_tokens,
                         "type": "market",
+                        "custom_feature_enabled": True,
                     })
                     await ws.send(sub_msg)
                     log.info("Subscribed to PM WS")
@@ -879,7 +900,6 @@ class BtcStreamManager:
                     )
                     for t in pending:
                         t.cancel()
-                    # If roll_task fired, just loop to reconnect with new tokens
                     if roll_task in done:
                         log.info("PM WS reconnecting for new window tokens")
                     else:
@@ -891,6 +911,8 @@ class BtcStreamManager:
             except Exception as e:
                 log.warning("PM WS error, reconnecting in 3s: %s", e)
                 await asyncio.sleep(3)
+            finally:
+                self._pm_ws = None
 
     async def _pm_recv_loop(self, ws):
         """Receive messages from PM WS and update prices."""
@@ -939,6 +961,22 @@ class BtcStreamManager:
                     best_ask = min((float(a["price"]) for a in asks), default=0.0)
                     updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
 
+                elif event_type == "best_bid_ask":
+                    asset_id = msg.get("asset_id", "")
+                    best_bid = _safe_float(msg.get("best_bid"))
+                    best_ask = _safe_float(msg.get("best_ask"))
+                    updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
+
+                elif event_type == "new_market":
+                    log.info("PM new_market: slug=%s id=%s", msg.get("slug", ""), msg.get("id", ""))
+
+                elif event_type == "market_resolved":
+                    log.info("PM market_resolved: id=%s winner=%s",
+                             msg.get("id", ""), msg.get("winning_outcome", ""))
+
+                elif event_type == "last_trade_price":
+                    pass  # informational, price already tracked via best_bid_ask
+
             if updated:
                 self._mark_pm_recv()
                 await self._push_update()
@@ -976,6 +1014,143 @@ class BtcStreamManager:
             except Exception:
                 return
             await asyncio.sleep(self.PM_PING_INTERVAL)
+
+    # ── Polymarket: dynamic subscription updates ────────────────────────────
+
+    async def _pm_swap_tokens(self, old_tokens: list[str], new_tokens: list[str]) -> bool:
+        """
+        Swap PM market channel subscription in-place.
+        Subscribe to new tokens, unsubscribe old ones. No server acknowledgment.
+        Returns True on success, False if fallback reconnect needed.
+        """
+        ws = self._pm_ws
+        if not ws:
+            log.warning("PM swap_tokens: no active WS connection")
+            return False
+
+        try:
+            if new_tokens:
+                await ws.send(json.dumps({"operation": "subscribe", "assets_ids": new_tokens}))
+                log.info("PM WS dynamic subscribe: %s", [t[:20] + "..." for t in new_tokens])
+            if old_tokens:
+                await ws.send(json.dumps({"operation": "unsubscribe", "assets_ids": old_tokens}))
+                log.info("PM WS dynamic unsubscribe: %s", [t[:20] + "..." for t in old_tokens])
+            return True
+        except Exception as e:
+            log.warning("PM WS swap_tokens failed: %s", e)
+            return False
+
+    # ── Polymarket: user channel (fill/order tracking) ────────────────────────
+
+    async def _pm_user_ws_loop(self):
+        """
+        Connect to PM user channel WS for fill/order notifications.
+        Requires POLYMARKET_API_KEY/SECRET/PASSPHRASE.
+        """
+        import websockets
+        from config import POLYMARKET_API_KEY, POLYMARKET_API_SECRET, POLYMARKET_API_PASSPHRASE
+
+        while self._running:
+            if not self._pm_condition_id:
+                await asyncio.sleep(5)
+                continue
+
+            try:
+                self._pm_user_reconnect.clear()
+                log.info("Connecting to PM User WS for condition=%s", self._pm_condition_id[:20])
+
+                async with websockets.connect(
+                    PM_USER_WS_URL,
+                    ping_interval=None,
+                    ping_timeout=None,
+                    close_timeout=5,
+                ) as ws:
+                    sub_msg = json.dumps({
+                        "auth": {
+                            "apiKey": POLYMARKET_API_KEY,
+                            "secret": POLYMARKET_API_SECRET,
+                            "passphrase": POLYMARKET_API_PASSPHRASE,
+                        },
+                        "type": "user",
+                        "markets": [self._pm_condition_id],
+                    })
+                    await ws.send(sub_msg)
+                    log.info("PM User WS: subscribed")
+
+                    recv_task = asyncio.create_task(self._pm_user_recv_loop(ws))
+                    ping_task = asyncio.create_task(self._pm_user_ping_loop(ws))
+                    roll_task = asyncio.create_task(self._pm_user_reconnect.wait())
+
+                    done, pending = await asyncio.wait(
+                        [recv_task, ping_task, roll_task],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    for t in pending:
+                        t.cancel()
+                    if roll_task in done:
+                        log.info("PM User WS reconnecting for new condition ID")
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.warning("PM User WS error, reconnecting in 3s: %s", e)
+                await asyncio.sleep(3)
+
+    async def _pm_user_recv_loop(self, ws):
+        """Receive fill/order events from PM user channel."""
+        import websockets
+        while self._running:
+            try:
+                raw = await asyncio.wait_for(ws.recv(), timeout=120)
+            except asyncio.TimeoutError:
+                log.warning("PM User WS inactivity timeout")
+                return
+            except websockets.exceptions.ConnectionClosed:
+                log.info("PM User WS connection closed")
+                return
+
+            if raw == "PONG":
+                continue
+
+            try:
+                parsed = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            messages = parsed if isinstance(parsed, list) else [parsed]
+            for msg in messages:
+                if not isinstance(msg, dict):
+                    continue
+                event_type = msg.get("event_type", "")
+
+                if event_type == "trade":
+                    log.info("PM TRADE: status=%s side=%s size=%s price=%s",
+                             msg.get("status"), msg.get("side"),
+                             msg.get("size"), msg.get("price"))
+                    if self._on_pm_fill:
+                        try:
+                            await self._on_pm_fill(msg)
+                        except Exception as e:
+                            log.warning("PM fill callback error: %s", e)
+
+                elif event_type == "order":
+                    log.info("PM ORDER: type=%s matched=%s/%s",
+                             msg.get("type"), msg.get("size_matched"),
+                             msg.get("original_size"))
+                    if self._on_pm_order:
+                        try:
+                            await self._on_pm_order(msg)
+                        except Exception as e:
+                            log.warning("PM order callback error: %s", e)
+
+    async def _pm_user_ping_loop(self, ws):
+        """Send PING to PM user channel every 10 seconds."""
+        while self._running:
+            try:
+                await ws.send("PING")
+            except Exception:
+                return
+            await asyncio.sleep(10)
 
     # ── Window roll ───────────────────────────────────────────────────────────
 
@@ -1056,6 +1231,7 @@ class BtcStreamManager:
             # Keep Kalshi data visible until new contract arrives since
             # Kalshi can be slow to transition between windows
             old_ks_ticker = self._kalshi_ticker
+            old_pm_tokens = list(self._pm_token_ids)
             self._pm_data = None
             self._pm_token_ids = []
             self._rolling = True
@@ -1099,6 +1275,7 @@ class BtcStreamManager:
                         if result and not result.get("error") and got_slug == new_slug:
                             self._pm_data = result
                             self._pm_token_ids = result.get("token_ids", [])
+                            self._pm_condition_id = result.get("condition_id", "")
                             pm_ok = True
                             self._mark_pm_recv()
                             log.info("ROLL PM ready (attempt %d, %.0fms)", attempt, fetch_elapsed * 1000)
@@ -1139,7 +1316,13 @@ class BtcStreamManager:
 
             # Update WS subscriptions in-place, fall back to reconnect
             if pm_ok:
-                self._pm_reconnect.set()
+                # Try dynamic swap on market channel
+                swapped = await self._pm_swap_tokens(old_pm_tokens, self._pm_token_ids)
+                if not swapped:
+                    log.info("PM WS swap failed, falling back to reconnect")
+                    self._pm_reconnect.set()
+                # Always reconnect user channel (condition_id changed)
+                self._pm_user_reconnect.set()
             if ks_ok:
                 # Try update_subscription on existing WS (no reconnect needed)
                 swapped = await self._kalshi_update_subscription(old_ks_ticker, self._kalshi_ticker)

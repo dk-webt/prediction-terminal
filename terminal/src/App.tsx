@@ -226,6 +226,60 @@ export default function App() {
             setTimeout(() => useStore.getState().removeOrder(orderId), 3000)
           }
         }
+
+      } else if (msg.type === 'pm_fill') {
+        const state = useStore.getState()
+        const data = (msg.data || {}) as Record<string, unknown>
+        const status = (data.status || '') as string
+        const side = (data.side || '') as string
+        const size = (data.size || '0') as string
+        const price = (data.price || '?') as string
+        const outcome = (data.outcome || '') as string
+
+        if (status === 'CONFIRMED') {
+          state.addFill({
+            platform: 'polymarket',
+            orderId: (data.id || '') as string,
+            ticker: outcome,
+            side,
+            price,
+            count: size,
+            action: side,
+            tracked: !!(data._pm_confirmed),
+            timestamp: Date.now(),
+          })
+          state.setProgressMsg(`PM FILL: ${side.toUpperCase()} ${size} ${outcome} @ $${price}`)
+          setTimeout(() => useStore.getState().setProgressMsg(''), 5000)
+        } else if (status === 'FAILED') {
+          state.setErrorMsg(`PM trade FAILED: ${side} ${size} ${outcome}`)
+          setTimeout(() => useStore.getState().setErrorMsg(''), 5000)
+        }
+
+      } else if (msg.type === 'pm_order_update') {
+        const state = useStore.getState()
+        const data = (msg.data || {}) as Record<string, unknown>
+        const orderId = (data.id || '') as string
+        const eventType = (data.type || '') as string
+
+        if (orderId && state.activeOrders.has(orderId)) {
+          if (eventType === 'CANCELLATION') {
+            state.updateOrderStatus(orderId, 'canceled')
+            state.setProgressMsg('PM ORDER: canceled')
+            setTimeout(() => {
+              useStore.getState().removeOrder(orderId)
+              useStore.getState().setProgressMsg('')
+            }, 3000)
+          } else if (eventType === 'UPDATE') {
+            const matched = Number(data.size_matched || 0)
+            const original = Number(data.original_size || 0)
+            if (matched >= original && original > 0) {
+              state.updateOrderStatus(orderId, 'filled', matched)
+              setTimeout(() => useStore.getState().removeOrder(orderId), 3000)
+            } else {
+              state.updateOrderStatus(orderId, 'partial', matched)
+            }
+          }
+        }
       }
     }
 
