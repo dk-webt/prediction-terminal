@@ -654,7 +654,7 @@ async def websocket_trade(websocket: WebSocket):
                                     else:
                                         best_ask = ks_data.get("no_ask", 0)
                                     if best_ask > 0:
-                                        ks_price = min(round(best_ask + 0.05, 2), 0.99)
+                                        ks_price = round(best_ask + 0.02, 2)
                                         log.info("ORDER %s: market cap from live data: best_ask=%.2f cap=%.2f",
                                                  order_id, best_ask, ks_price)
                             result = await asyncio.to_thread(

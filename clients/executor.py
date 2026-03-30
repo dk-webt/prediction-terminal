@@ -130,9 +130,11 @@ def place_kalshi_order(
 
     if order_type == "market":
         # Kalshi requires a price even for market orders.
-        # If a price cap was provided (best ask + buffer from live data),
-        # use it. Otherwise fall back to $0.99 as a safety cap.
-        cap = f"{price:.2f}" if price is not None else "0.99"
+        # Price cap must come from live data (best ask + buffer) via api_server.
+        # Reject if no cap available — never send a blind high price.
+        if price is None:
+            return {"success": False, "error": "Market order rejected: no live price data to compute safe cap"}
+        cap = f"{price:.2f}"
         if side == "yes":
             body["yes_price_dollars"] = cap
         else:
