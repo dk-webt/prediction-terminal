@@ -17,6 +17,9 @@ from config import (
     KALSHI_PRIVATE_KEY_PATH,
     POLYMARKET_PRIVATE_KEY,
     POLYMARKET_WALLET_ADDRESS,
+    POLYMARKET_API_KEY,
+    POLYMARKET_API_SECRET,
+    POLYMARKET_API_PASSPHRASE,
 )
 
 log = logging.getLogger(__name__)
@@ -211,7 +214,7 @@ _pm_client = None
 
 
 def _get_pm_client():
-    """Lazy-init the Polymarket CLOB client. Derives API creds from private key."""
+    """Lazy-init the Polymarket CLOB client."""
     global _pm_client
     if _pm_client is not None:
         return _pm_client
@@ -221,17 +224,25 @@ def _get_pm_client():
 
     try:
         from py_clob_client.client import ClobClient
+        from py_clob_client.clob_types import ApiCreds
 
-        # Derive API creds (key, secret, passphrase) from the private key.
-        # This calls Polymarket's API — the same creds as shown in the UI
-        # but with the secret/passphrase that aren't displayed after creation.
-        temp = ClobClient(
-            "https://clob.polymarket.com",
-            key=POLYMARKET_PRIVATE_KEY,
-            chain_id=137,
-        )
-        creds = temp.derive_api_key()
-        log.info("Polymarket API creds derived for %s", POLYMARKET_WALLET_ADDRESS)
+        # Use explicit API creds from .env if available (most reliable).
+        # Fall back to deriving from private key if not set.
+        if POLYMARKET_API_KEY and POLYMARKET_API_SECRET and POLYMARKET_API_PASSPHRASE:
+            creds = ApiCreds(
+                api_key=POLYMARKET_API_KEY,
+                api_secret=POLYMARKET_API_SECRET,
+                api_passphrase=POLYMARKET_API_PASSPHRASE,
+            )
+            log.info("Polymarket API creds loaded from .env")
+        else:
+            temp = ClobClient(
+                "https://clob.polymarket.com",
+                key=POLYMARKET_PRIVATE_KEY,
+                chain_id=137,
+            )
+            creds = temp.derive_api_key()
+            log.info("Polymarket API creds derived from private key")
 
         # signature_type=1 (POLY_PROXY) for Polymarket proxy wallets
         _pm_client = ClobClient(

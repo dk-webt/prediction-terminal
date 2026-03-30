@@ -17,7 +17,10 @@ KALSHI_API_PASSWORD: str | None = os.environ.get("KALSHI_API_PASSWORD")
 GEMINI_API_KEY: str | None = os.environ.get("GEMINI_API_KEY")
 
 # Polymarket execution (CLOB)
-# POLYMARKET_PRIVATE_KEY: the MetaMask private key you used to sign up on Polymarket
-# POLYMARKET_WALLET_ADDRESS: the signer/relayer address shown in Polymarket API settings
+# POLYMARKET_PRIVATE_KEY: the signer secret key from Polymarket API Keys settings
+# POLYMARKET_WALLET_ADDRESS: the proxy/deposit address shown in Polymarket settings
 POLYMARKET_PRIVATE_KEY: str | None = os.environ.get("POLYMARKET_PRIVATE_KEY")
 POLYMARKET_WALLET_ADDRESS: str | None = os.environ.get("POLYMARKET_WALLET_ADDRESS")
+POLYMARKET_API_KEY: str | None = os.environ.get("POLYMARKET_API_KEY")
+POLYMARKET_API_SECRET: str | None = os.environ.get("POLYMARKET_API_SECRET")
+POLYMARKET_API_PASSPHRASE: str | None = os.environ.get("POLYMARKET_API_PASSPHRASE")

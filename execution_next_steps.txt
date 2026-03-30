@@ -1,0 +1,197 @@
+Execution Layer V2 — WebSocket-Enhanced Order Tracking
+======================================================
+
+Goal: Add real-time fill/order tracking via WebSockets on both platforms.
+Order submission remains REST — neither platform supports WS order placement.
+
+Current flow:
+  User → BUY KS YES 10 → REST POST → HTTP response → done (no further tracking)
+
+Target flow:
+  User → BUY KS YES 10 → REST POST → HTTP response (order accepted)
+                                     ↓
+                          WS fill channel → real-time fill notification
+                          WS order channel → resting/canceled/executed updates
+                                     ↓
+                          Frontend → toast, order status, fill history
+
+
+================================================================================
+STEP 1: Kalshi — Subscribe to Private Channels
+================================================================================
+
+No new connection needed. Our existing authenticated KS WebSocket can subscribe
+to private channels on the same connection.
+
+Tasks:
+  [ ] After initial ticker/orderbook subscribe, add fill + user_orders channels:
+      {"id": 3, "cmd": "subscribe", "params": {"channels": ["fill"]}}
+      {"id": 4, "cmd": "subscribe", "params": {"channels": ["user_orders"]}}
+      (No market_ticker — receive for all markets)
+
+  [ ] Store SIDs from subscribe responses
+
+  [ ] Add message handlers in _kalshi_recv_loop:
+      - "fill" → extract trade_id, order_id, market_ticker, side,
+        yes_price_dollars, count_fp, action, is_taker, fee_cost
+      - "user_order" → extract order_id, ticker, status, side,
+        fill_count_fp, remaining_count_fp, initial_count_fp
+
+  [ ] New callback: self._on_ks_fill(data), self._on_ks_order_update(data)
+      - Passed in from api_server.py alongside existing on_update callback
+
+  [ ] These subscriptions persist across 15-min rolls (not market-scoped)
+
+Files: clients/btc_watcher.py, api_server.py
+
+
+================================================================================
+STEP 2: Polymarket — New User Channel WebSocket
+================================================================================
+
+Separate connection required (different endpoint + auth).
+
+Tasks:
+  [ ] New WS connection to wss://ws-subscriptions-clob.polymarket.com/ws/user
+
+  [ ] Auth via creds in subscribe message (not headers):
+      {
+        "auth": {
+          "apiKey": POLYMARKET_API_KEY,
+          "secret": POLYMARKET_API_SECRET,
+          "passphrase": POLYMARKET_API_PASSPHRASE
+        },
+        "type": "user",
+        "markets": [condition_id]
+      }
+      NOTE: uses condition IDs, NOT asset/token IDs
+
+  [ ] Ping loop: send "PING" every 10s (same as market channel)
+
+  [ ] Handle trade events:
+      Status flow: MATCHED → MINED → CONFIRMED (success) | FAILED
+      Fields: status, side, size, price, outcome (YES/NO), market, maker_orders
+
+  [ ] Handle order events:
+      Types: PLACEMENT, UPDATE (partial fill), CANCELLATION
+      Fields: original_size, size_matched, price, side, outcome, asset_id
+
+  [ ] New callback: self._on_pm_fill(data), self._on_pm_order_update(data)
+
+  [ ] Only start if POLYMARKET_API_KEY/SECRET/PASSPHRASE are all configured
+      — gracefully skip if not set
+
+  [ ] Update subscription markets on 15-min roll (swap condition IDs)
+
+Files: clients/btc_watcher.py, config.py, api_server.py
+
+
+================================================================================
+STEP 3: Wire Fill Events to Frontend
+================================================================================
+
+Route fill/order events from btc_watcher through api_server to the Electron
+app via the existing /ws/trade WebSocket.
+
+Tasks:
+  [ ] api_server.py: register fill/order callbacks with BtcStreamManager
+
+  [ ] Forward as new message types on /ws/trade:
+      - {"type": "ks_fill", "data": {trade_id, order_id, ticker, side, price, count, action, fee}}
+      - {"type": "ks_order_update", "data": {order_id, ticker, status, side, fill_count, remaining}}
+      - {"type": "pm_fill", "data": {status, side, size, price, outcome, market}}
+      - {"type": "pm_order_update", "data": {type, original_size, size_matched, price, side}}
+
+  [ ] ConnectionManager.ts: add handlers for new message types in /ws/trade
+
+Files: api_server.py, terminal/src/ws/ConnectionManager.ts
+
+
+================================================================================
+STEP 4: Frontend — Order Status & Fill Display
+================================================================================
+
+Tasks:
+  [ ] Zustand store additions:
+      - activeOrders: Map<order_id, {platform, side, price, size, status, timestamp}>
+      - fillHistory: Array<{platform, order_id, price, size, side, fee, timestamp}>
+
+  [ ] On BUY/SELL REST response: add to activeOrders as "submitted"
+
+  [ ] On WS fill event: move from activeOrders to fillHistory, show toast
+
+  [ ] On WS order update:
+      - "resting" → update status in activeOrders
+      - "executed" → move to fillHistory
+      - "canceled" → remove from activeOrders, show toast
+
+  [ ] PM trade status flow:
+      - MATCHED → update activeOrders status
+      - MINED → update status
+      - CONFIRMED → move to fillHistory, show toast
+      - FAILED → remove from activeOrders, show error toast
+
+  [ ] UI components:
+      - Toast notification on fill (price, size, platform)
+      - Order status indicator in BTC panel or detail panel
+      - Fill history list (optional, lower priority)
+
+Files: terminal/src/store.ts, terminal/src/components/DetailPanel.tsx,
+       terminal/src/ws/ConnectionManager.ts
+
+
+================================================================================
+STEP 5: Order State Management & Edge Cases
+================================================================================
+
+Tasks:
+  [ ] Correlate REST order_id with WS fill events:
+      - Kalshi: REST response contains order_id, fill msg has order_id
+      - Polymarket: REST response contains order ID, trade event has market + side
+
+  [ ] Handle partial fills:
+      - KS user_order has fill_count_fp + remaining_count_fp
+      - PM order UPDATE has size_matched vs original_size
+      - Show "5/10 filled" in UI
+
+  [ ] Handle FOK (fill-or-kill) for PM market orders:
+      - FOK either fills completely or fails immediately
+      - REST response is sufficient — WS is confirmation only
+      - No resting state possible
+
+  [ ] Handle GTC (good-till-canceled) for PM limit orders:
+      - Order may rest indefinitely
+      - WS user channel is the only way to know when it fills
+      - Show "resting" status in UI until fill/cancel
+
+  [ ] Handle order expiry:
+      - KS: orders may have expiration_time
+      - PM: GTC orders persist until filled or canceled
+
+  [ ] Reconnection resilience:
+      - If KS WS reconnects, re-subscribe to fill + user_orders
+      - If PM user WS reconnects, re-subscribe with auth + current markets
+      - Orders placed during disconnection: rely on REST response,
+        pick up WS tracking on reconnect
+
+  [ ] Cleanup: remove orders from activeOrders after terminal state reached
+      + configurable retention for fillHistory
+
+
+================================================================================
+IMPLEMENTATION ORDER
+================================================================================
+
+Priority: Step 1 first (no new connections, biggest bang for buck)
+
+  Step 1: Kalshi fill tracking      — 1 file change, existing WS
+  Step 2: PM user channel           — new WS connection, needs API creds
+  Step 3: Wire to frontend          — plumbing, no new logic
+  Step 4: Frontend display          — UI work
+  Step 5: Edge cases                — hardening
+
+Each step is independently useful:
+  - After Step 1 alone: Kalshi fills show in server logs
+  - After Steps 1+3: Kalshi fills reach the frontend
+  - After Steps 1-4: Full UI for Kalshi fills
+  - After all steps: Both platforms, all edge cases handled
