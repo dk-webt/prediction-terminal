@@ -364,6 +364,10 @@ _btc_stream = None            # BtcStreamManager instance
 _btc_subscribers: set = set() # set of WebSocket objects listening for updates
 _trade_subscribers: set = set()  # set of /ws/trade WebSocket objects
 
+# Active order tracking — correlate REST placement with WS fill/order events
+# Keyed by both server order_id and client_order_id for lookup flexibility
+_active_orders: dict[str, dict] = {}  # order_id -> order info
+
 
 async def _btc_broadcast(snapshot: dict):
     """Push BTC update to all connected /ws/btc subscribers."""
@@ -391,13 +395,64 @@ async def _trade_broadcast(msg_type: str, data: dict):
         _trade_subscribers.discard(ws)
 
 
+def _track_order(platform: str, order_info: dict, rest_response: dict):
+    """Store an order for correlation with WS fill/order events."""
+    # Kalshi REST response has order.order_id; PM has different structure
+    resp_data = rest_response.get("data", {})
+    if platform == "kalshi":
+        order_data = resp_data.get("order", resp_data)
+        server_order_id = order_data.get("order_id", "")
+        client_order_id = rest_response.get("client_order_id", "")
+        entry = {
+            "platform": platform,
+            "server_order_id": server_order_id,
+            "client_order_id": client_order_id,
+            "ticker": order_info.get("ticker", ""),
+            "action": order_info.get("action", ""),
+            "side": order_info.get("side", ""),
+            "count": order_info.get("count", 0),
+            "price": order_info.get("price"),
+            "status": "submitted",
+        }
+        if server_order_id:
+            _active_orders[server_order_id] = entry
+            log.info("TRACK ORDER: %s (server=%s client=%s)",
+                     platform, server_order_id, client_order_id)
+        if client_order_id and client_order_id != server_order_id:
+            _active_orders[client_order_id] = entry
+
+
 async def _on_ks_fill(data: dict):
-    """Callback for Kalshi fill events — broadcast to /ws/trade clients."""
+    """Callback for Kalshi fill events — enrich and broadcast to /ws/trade."""
+    order_id = data.get("order_id", "")
+    tracked = _active_orders.get(order_id)
+    if tracked:
+        tracked["status"] = "filled"
+        data["_tracked"] = True
+        data["_order"] = tracked
+        log.info("KS FILL matched: order=%s %s %s x%s @ %s",
+                 order_id, tracked["action"], tracked["side"],
+                 data.get("count_fp", "?"), data.get("yes_price_dollars", "?"))
     await _trade_broadcast("ks_fill", data)
 
 
 async def _on_ks_order(data: dict):
-    """Callback for Kalshi order updates — broadcast to /ws/trade clients."""
+    """Callback for Kalshi order updates — enrich and broadcast to /ws/trade."""
+    order_id = data.get("order_id", "")
+    status = data.get("status", "")
+    tracked = _active_orders.get(order_id)
+    if tracked:
+        tracked["status"] = status
+        data["_tracked"] = True
+        data["_order"] = tracked
+        log.info("KS ORDER UPDATE matched: order=%s status=%s", order_id, status)
+        # Clean up terminal states
+        if status in ("canceled", "executed"):
+            _active_orders.pop(order_id, None)
+            # Also remove by client_order_id if present
+            client_id = tracked.get("client_order_id", "")
+            if client_id:
+                _active_orders.pop(client_id, None)
     await _trade_broadcast("ks_order_update", data)
 
 
@@ -602,6 +657,7 @@ async def websocket_trade(websocket: WebSocket):
                             )
                         if result.get("success"):
                             log.info("ORDER %s: success — %s", order_id, result.get("data", ""))
+                            _track_order(order["platform"], order, result)
                         else:
                             log.warning("ORDER %s: failed — %s", order_id, result.get("error", "unknown"))
                         await websocket.send_json({"type": "btc_order_result", **result})

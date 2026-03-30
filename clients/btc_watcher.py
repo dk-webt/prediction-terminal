@@ -581,8 +581,8 @@ class BtcStreamManager:
                 async with websockets.connect(
                     KALSHI_WS_URL,
                     additional_headers=auth_headers,
-                    ping_interval=20,
-                    ping_timeout=10,
+                    ping_interval=None,  # Kalshi sends pings every 10s; library auto-responds
+                    ping_timeout=None,
                     close_timeout=5,
                 ) as ws:
                     self._ks_ws = ws

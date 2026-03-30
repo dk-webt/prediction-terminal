@@ -118,13 +118,14 @@ def place_kalshi_order(
     if not headers:
         return {"success": False, "error": "Failed to sign Kalshi request"}
 
+    client_order_id = str(uuid.uuid4())
     body: dict = {
         "ticker": ticker,
         "action": action,
         "side": side,
         "count": count,
         "type": order_type,
-        "client_order_id": str(uuid.uuid4()),
+        "client_order_id": client_order_id,
     }
 
     if price is not None and order_type == "limit":
@@ -144,7 +145,7 @@ def place_kalshi_order(
         data = resp.json()
 
         if resp.status_code in (200, 201):
-            return {"success": True, "data": data}
+            return {"success": True, "data": data, "client_order_id": client_order_id}
         else:
             return {
                 "success": False,
