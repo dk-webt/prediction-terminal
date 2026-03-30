@@ -362,6 +362,7 @@ async def clear_cache_endpoint():
 # Module-level BTC stream — shared across /ws/btc connections
 _btc_stream = None            # BtcStreamManager instance
 _btc_subscribers: set = set() # set of WebSocket objects listening for updates
+_trade_subscribers: set = set()  # set of /ws/trade WebSocket objects
 
 
 async def _btc_broadcast(snapshot: dict):
@@ -377,13 +378,40 @@ async def _btc_broadcast(snapshot: dict):
         _btc_subscribers.discard(ws)
 
 
+async def _trade_broadcast(msg_type: str, data: dict):
+    """Push fill/order events to all connected /ws/trade subscribers."""
+    msg = {"type": msg_type, "data": data}
+    dead = []
+    for ws in _trade_subscribers:
+        try:
+            await ws.send_json(msg)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        _trade_subscribers.discard(ws)
+
+
+async def _on_ks_fill(data: dict):
+    """Callback for Kalshi fill events — broadcast to /ws/trade clients."""
+    await _trade_broadcast("ks_fill", data)
+
+
+async def _on_ks_order(data: dict):
+    """Callback for Kalshi order updates — broadcast to /ws/trade clients."""
+    await _trade_broadcast("ks_order_update", data)
+
+
 async def _btc_ensure_started():
     """Start the BTC stream if not already running."""
     global _btc_stream
     if _btc_stream is not None:
         return
     from clients.btc_watcher import BtcStreamManager
-    _btc_stream = BtcStreamManager(on_update=_btc_broadcast)
+    _btc_stream = BtcStreamManager(
+        on_update=_btc_broadcast,
+        on_ks_fill=_on_ks_fill,
+        on_ks_order=_on_ks_order,
+    )
     await _btc_stream.start()
     log.info("BTC stream started (module-level)")
 
@@ -511,6 +539,7 @@ async def websocket_btc(websocket: WebSocket):
 @app.websocket("/ws/trade")
 async def websocket_trade(websocket: WebSocket):
     await websocket.accept()
+    _trade_subscribers.add(websocket)
     pending_orders: dict = {}
     try:
         while True:
@@ -595,6 +624,8 @@ async def websocket_trade(websocket: WebSocket):
             await websocket.send_json({"type": "error", "msg": str(exc)})
         except Exception:
             pass
+    finally:
+        _trade_subscribers.discard(websocket)
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

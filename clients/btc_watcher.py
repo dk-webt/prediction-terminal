@@ -88,7 +88,7 @@ def _kalshi_ws_auth_headers() -> dict | None:
             message.encode("utf-8"),
             padding.PSS(
                 mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=padding.PSS.MAX_LENGTH,
+                salt_length=padding.PSS.DIGEST_LENGTH,
             ),
             hashes.SHA256(),
         )
@@ -409,8 +409,10 @@ class BtcStreamManager:
     ROLL_MAX_RETRIES = 60        # max retries (~30s max wait for slow platforms)
     STALE_THRESHOLD = 10         # seconds — log warning when platform data goes stale
 
-    def __init__(self, on_update):
+    def __init__(self, on_update, on_ks_fill=None, on_ks_order=None):
         self._on_update = on_update
+        self._on_ks_fill = on_ks_fill        # async callback for Kalshi fill events
+        self._on_ks_order = on_ks_order      # async callback for Kalshi order updates
         self._running = False
         self._tasks: list[asyncio.Task] = []
         self._last_push_time: float = 0.0
@@ -428,6 +430,11 @@ class BtcStreamManager:
         self._pm_last_recv: float = 0.0  # monotonic time of last PM data
         self._ks_stale_logged = False    # avoid spamming stale warnings
         self._pm_stale_logged = False
+
+        # Kalshi WS state
+        self._ks_ws = None               # active WS connection reference
+        self._ks_sids: dict[str, int] = {}  # channel_name -> subscription ID
+        self._ks_cmd_id: int = 0         # incrementing command ID for KS WS
 
         # Signals WS loops to reconnect with new tokens/tickers
         self._pm_reconnect = asyncio.Event()
@@ -483,6 +490,11 @@ class BtcStreamManager:
             except asyncio.CancelledError:
                 pass
         self._tasks.clear()
+
+    def _next_ks_cmd_id(self) -> int:
+        """Get next incrementing command ID for Kalshi WS."""
+        self._ks_cmd_id += 1
+        return self._ks_cmd_id
 
     def _mark_ks_recv(self):
         """Mark Kalshi data received — resets stale flag."""
@@ -548,8 +560,9 @@ class BtcStreamManager:
     async def _kalshi_ws_loop(self):
         """
         Connect to Kalshi WebSocket with RSA-PSS auth and stream
-        ticker updates for the active BTC 15-min market.
-        Reconnects automatically on failure.
+        ticker updates + fill/order notifications.
+        Reconnects automatically on failure. Uses update_subscription
+        for rolls instead of full reconnect.
         """
         import websockets
 
@@ -561,6 +574,8 @@ class BtcStreamManager:
                 return
 
             try:
+                self._ks_cmd_id = 0
+                self._ks_sids.clear()
                 connected_ticker = self._kalshi_ticker
                 log.info("Connecting to Kalshi WS for %s", connected_ticker)
 
@@ -573,18 +588,33 @@ class BtcStreamManager:
                     ping_timeout=10,
                     close_timeout=5,
                 ) as ws:
-                    # Subscribe to ticker + orderbook_delta for the active market
+                    self._ks_ws = ws
+
+                    # Subscribe to market data channels
                     if connected_ticker:
-                        sub_msg = json.dumps({
-                            "id": 1,
+                        await ws.send(json.dumps({
+                            "id": self._next_ks_cmd_id(),
                             "cmd": "subscribe",
                             "params": {
                                 "channels": ["ticker", "orderbook_delta"],
                                 "market_ticker": connected_ticker,
                             },
-                        })
-                        await ws.send(sub_msg)
-                        log.info("Subscribed to Kalshi WS ticker: %s", connected_ticker)
+                        }))
+                        log.info("Subscribed to Kalshi WS data: %s", connected_ticker)
+
+                    # Subscribe to private channels (fill + order tracking)
+                    # No market_ticker — receive for all markets
+                    await ws.send(json.dumps({
+                        "id": self._next_ks_cmd_id(),
+                        "cmd": "subscribe",
+                        "params": {"channels": ["fill"]},
+                    }))
+                    await ws.send(json.dumps({
+                        "id": self._next_ks_cmd_id(),
+                        "cmd": "subscribe",
+                        "params": {"channels": ["user_orders"]},
+                    }))
+                    log.info("Subscribed to Kalshi WS fill + user_orders")
 
                     recv_task = asyncio.create_task(self._kalshi_recv_loop(ws))
                     roll_task = asyncio.create_task(self._ks_reconnect.wait())
@@ -606,6 +636,8 @@ class BtcStreamManager:
             except Exception as e:
                 log.warning("Kalshi WS error, reconnecting in 3s: %s", e)
                 await asyncio.sleep(3)
+            finally:
+                self._ks_ws = None
 
     async def _kalshi_recv_loop(self, ws):
         """Receive and process Kalshi WS messages."""
@@ -636,7 +668,15 @@ class BtcStreamManager:
             msg_type = msg.get("type", "")
             data = msg.get("msg", {})
 
-            if msg_type == "ticker":
+            if msg_type == "subscribed":
+                # Track SIDs from subscribe responses
+                channel = data.get("channel", "")
+                sid = data.get("sid")
+                if channel and sid is not None:
+                    self._ks_sids[channel] = sid
+                    log.info("KS WS subscribed: channel=%s sid=%d", channel, sid)
+
+            elif msg_type == "ticker":
                 self._apply_kalshi_ticker(data)
                 self._mark_ks_recv()
                 await self._push_update()
@@ -650,6 +690,27 @@ class BtcStreamManager:
                 self._apply_kalshi_orderbook_delta(data)
                 self._mark_ks_recv()
                 await self._push_update()
+
+            elif msg_type == "fill":
+                log.info("KS FILL: %s", data)
+                if self._on_ks_fill:
+                    try:
+                        await self._on_ks_fill(data)
+                    except Exception as e:
+                        log.warning("KS fill callback error: %s", e)
+
+            elif msg_type == "user_order":
+                log.info("KS ORDER: %s %s %s", data.get("ticker", ""),
+                         data.get("status", ""), data.get("side", ""))
+                if self._on_ks_order:
+                    try:
+                        await self._on_ks_order(data)
+                    except Exception as e:
+                        log.warning("KS order callback error: %s", e)
+
+            elif msg_type == "ok":
+                # Response to update_subscription / list_subscriptions
+                log.debug("KS WS ok: id=%s msg=%s", msg.get("id"), data)
 
             elif msg_type == "error":
                 log.warning("Kalshi WS error msg: %s", data)
@@ -719,6 +780,62 @@ class BtcStreamManager:
             if delta > 0 and price >= self._kalshi_data.get("no_bid", 0):
                 self._kalshi_data["no_bid"] = price
                 self._kalshi_data["yes_ask"] = round(1.0 - price, 4)
+
+    # ── Kalshi: dynamic subscription updates ───────────────────────────────
+
+    async def _kalshi_update_subscription(self, old_ticker: str, new_ticker: str) -> bool:
+        """
+        Swap Kalshi market subscription in-place using update_subscription.
+        Adds new ticker then removes old ticker from existing SIDs.
+        Returns True on success, False if fallback reconnect needed.
+        """
+        ws = self._ks_ws
+        if not ws:
+            log.warning("KS update_subscription: no active WS connection")
+            return False
+
+        # Get SIDs for data channels (ticker + orderbook_delta)
+        data_sids = []
+        for ch in ("ticker", "orderbook_delta"):
+            sid = self._ks_sids.get(ch)
+            if sid is not None:
+                data_sids.append(sid)
+
+        if not data_sids:
+            log.warning("KS update_subscription: no SIDs tracked, falling back to reconnect")
+            return False
+
+        try:
+            # Add new ticker to existing subscriptions
+            await ws.send(json.dumps({
+                "id": self._next_ks_cmd_id(),
+                "cmd": "update_subscription",
+                "params": {
+                    "sids": data_sids,
+                    "market_tickers": [new_ticker],
+                    "action": "add_markets",
+                    "send_initial_snapshot": True,
+                },
+            }))
+            log.info("KS update_subscription: added %s to sids=%s", new_ticker, data_sids)
+
+            # Remove old ticker
+            if old_ticker:
+                await ws.send(json.dumps({
+                    "id": self._next_ks_cmd_id(),
+                    "cmd": "update_subscription",
+                    "params": {
+                        "sids": data_sids,
+                        "market_tickers": [old_ticker],
+                        "action": "delete_markets",
+                    },
+                }))
+                log.info("KS update_subscription: removed %s", old_ticker)
+
+            return True
+        except Exception as e:
+            log.warning("KS update_subscription failed: %s", e)
+            return False
 
     # ── Kalshi: REST polling fallback ─────────────────────────────────────────
 
@@ -1042,11 +1159,16 @@ class BtcStreamManager:
             else:
                 log.info("ROLL DONE: pm_ok=%s ks_ok=%s total=%.0fms", pm_ok, ks_ok, roll_elapsed * 1000)
 
-            # Signal WS loops to reconnect with new tokens/tickers
+            # Update WS subscriptions in-place, fall back to reconnect
             if pm_ok:
                 self._pm_reconnect.set()
             if ks_ok:
-                self._ks_reconnect.set()
+                # Try update_subscription on existing WS (no reconnect needed)
+                swapped = await self._kalshi_update_subscription(old_ks_ticker, self._kalshi_ticker)
+                if not swapped:
+                    # Fallback: signal full reconnect
+                    log.info("KS WS update_subscription failed, falling back to reconnect")
+                    self._ks_reconnect.set()
 
             await self._push_update(force=True)
 
