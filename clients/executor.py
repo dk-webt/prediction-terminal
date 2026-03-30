@@ -237,8 +237,8 @@ def _get_pm_client():
         from py_clob_client.client import ClobClient
         from py_clob_client.clob_types import ApiCreds
 
-        # Use explicit API creds from .env if available (most reliable).
-        # Fall back to deriving from private key if not set.
+        # Use explicit API creds from .env if available.
+        # Fall back to creating/deriving from private key if not set.
         if POLYMARKET_API_KEY and POLYMARKET_API_SECRET and POLYMARKET_API_PASSPHRASE:
             creds = ApiCreds(
                 api_key=POLYMARKET_API_KEY,
@@ -252,17 +252,17 @@ def _get_pm_client():
                 key=POLYMARKET_PRIVATE_KEY,
                 chain_id=137,
             )
-            creds = temp.derive_api_key()
-            log.info("Polymarket API creds derived from private key")
+            creds = temp.create_or_derive_api_creds()
+            log.info("Polymarket API creds derived from private key: %s", creds.api_key[:10])
 
-        # signature_type=1 (POLY_PROXY) for Polymarket proxy wallets
+        # signature_type=0 (EOA) for direct MetaMask wallets
+        # signature_type=1 (POLY_PROXY) for proxy wallets (email/social login)
         _pm_client = ClobClient(
             "https://clob.polymarket.com",
             key=POLYMARKET_PRIVATE_KEY,
             chain_id=137,
             creds=creds,
-            signature_type=1,  # POLY_PROXY wallet
-            funder=POLYMARKET_WALLET_ADDRESS,
+            signature_type=0,  # EOA — MetaMask wallet is the trading wallet
         )
         return _pm_client
     except Exception as e:
