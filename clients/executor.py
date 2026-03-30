@@ -255,15 +255,14 @@ def _get_pm_client():
             creds = temp.create_or_derive_api_creds()
             log.info("Polymarket API creds derived from private key")
 
-        # signature_type=1 (POLY_PROXY) — MetaMask signs, proxy wallet holds funds
-        # POLYMARKET_WALLET_ADDRESS must be the proxy/profile address (not MetaMask)
+        # signature_type=0 (EOA) — MetaMask wallet signs and holds funds
+        # signature_type=1 (POLY_PROXY) — proxy wallet, but signing fails for this account
         _pm_client = ClobClient(
             "https://clob.polymarket.com",
             key=POLYMARKET_PRIVATE_KEY,
             chain_id=137,
             creds=creds,
-            signature_type=1,  # POLY_PROXY
-            funder=POLYMARKET_WALLET_ADDRESS,
+            signature_type=0,  # EOA
         )
         return _pm_client
     except Exception as e:
