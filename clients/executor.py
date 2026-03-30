@@ -132,16 +132,16 @@ def place_kalshi_order(
         # Kalshi requires a price even for market orders.
         # If a price cap was provided (best ask + buffer from live data),
         # use it. Otherwise fall back to $0.99 as a safety cap.
-        cap = f"{price:.6f}" if price is not None else "0.990000"
+        cap = f"{price:.2f}" if price is not None else "0.99"
         if side == "yes":
             body["yes_price_dollars"] = cap
         else:
             body["no_price_dollars"] = cap
     elif price is not None:
         if side == "yes":
-            body["yes_price_dollars"] = f"{price:.6f}"
+            body["yes_price_dollars"] = f"{price:.2f}"
         else:
-            body["no_price_dollars"] = f"{price:.6f}"
+            body["no_price_dollars"] = f"{price:.2f}"
 
     try:
         resp = requests.post(
