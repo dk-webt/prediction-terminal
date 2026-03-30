@@ -127,7 +127,7 @@ export default function App() {
       }
     }
 
-    // ── Trade message handler (order confirm/result/cancel) ───────────────
+    // ── Trade message handler (order confirm/result/cancel/fill/order) ────
     const onTradeMessage = (msg: Record<string, unknown>) => {
       if (msg.type === 'btc_order_confirm') {
         const state = useStore.getState()
@@ -139,6 +139,24 @@ export default function App() {
         state.setPendingOrder(null)
         if (msg.success) {
           state.setProgressMsg('Order placed successfully')
+          // Track the order for WS fill/order correlation
+          const data = (msg.data || {}) as Record<string, unknown>
+          const order = (data.order || data) as Record<string, unknown>
+          const orderId = (order.order_id || '') as string
+          if (orderId) {
+            state.trackOrder({
+              platform: 'kalshi',
+              orderId,
+              ticker: (order.ticker || '') as string,
+              action: (order.action || '') as string,
+              side: (order.side || '') as string,
+              count: Number(order.count || 0),
+              price: order.yes_price_dollars ? Number(order.yes_price_dollars) : null,
+              status: 'submitted',
+              fillCount: 0,
+              timestamp: Date.now(),
+            })
+          }
         } else {
           state.setErrorMsg(`Order failed: ${msg.error || 'unknown error'}`)
         }
@@ -150,6 +168,64 @@ export default function App() {
         state.setProgressMsg('Order cancelled')
         state.setLoading(false)
         setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
+
+      } else if (msg.type === 'ks_fill') {
+        const state = useStore.getState()
+        const data = (msg.data || {}) as Record<string, unknown>
+        const orderId = (data.order_id || '') as string
+        const count = (data.count_fp || '0') as string
+        const price = (data.yes_price_dollars || '?') as string
+        const side = (data.side || '') as string
+        const action = (data.action || '') as string
+
+        state.addFill({
+          platform: 'kalshi',
+          orderId,
+          ticker: (data.market_ticker || '') as string,
+          side,
+          price,
+          count,
+          action,
+          tracked: !!(data._tracked),
+          timestamp: Date.now(),
+        })
+
+        // Update active order fill count
+        const existing = state.activeOrders.get(orderId)
+        if (existing) {
+          const newFillCount = existing.fillCount + Number(count)
+          if (newFillCount >= existing.count) {
+            state.updateOrderStatus(orderId, 'filled', newFillCount)
+          } else {
+            state.updateOrderStatus(orderId, 'partial', newFillCount)
+          }
+        }
+
+        state.setProgressMsg(`KS FILL: ${action.toUpperCase()} ${count} ${side.toUpperCase()} @ $${price}`)
+        setTimeout(() => useStore.getState().setProgressMsg(''), 5000)
+
+      } else if (msg.type === 'ks_order_update') {
+        const state = useStore.getState()
+        const data = (msg.data || {}) as Record<string, unknown>
+        const orderId = (data.order_id || '') as string
+        const status = (data.status || '') as string
+
+        if (orderId && state.activeOrders.has(orderId)) {
+          if (status === 'resting') {
+            state.updateOrderStatus(orderId, 'resting')
+          } else if (status === 'canceled') {
+            state.updateOrderStatus(orderId, 'canceled')
+            state.setProgressMsg('KS ORDER: canceled')
+            setTimeout(() => {
+              useStore.getState().removeOrder(orderId)
+              useStore.getState().setProgressMsg('')
+            }, 3000)
+          } else if (status === 'executed') {
+            const fillCount = Number(data.fill_count_fp || 0)
+            state.updateOrderStatus(orderId, 'filled', fillCount)
+            setTimeout(() => useStore.getState().removeOrder(orderId), 3000)
+          }
+        }
       }
     }
 

@@ -115,6 +115,31 @@ export interface OrderResult {
   data?: Record<string, unknown>
 }
 
+export interface TrackedOrder {
+  platform: 'kalshi' | 'polymarket'
+  orderId: string
+  ticker: string
+  action: string
+  side: string
+  count: number
+  price: number | null
+  status: 'submitted' | 'resting' | 'partial' | 'filled' | 'canceled'
+  fillCount: number
+  timestamp: number
+}
+
+export interface FillEvent {
+  platform: 'kalshi' | 'polymarket'
+  orderId: string
+  ticker: string
+  side: string
+  price: string
+  count: string
+  action: string
+  tracked: boolean
+  timestamp: number
+}
+
 // Extend Window for Electron bridge
 declare global {
   interface Window {

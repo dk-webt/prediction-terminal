@@ -6,6 +6,8 @@ import type {
   CacheStats,
   BtcSnapshot,
   OrderConfirmation,
+  TrackedOrder,
+  FillEvent,
 } from './types'
 
 export type View = 'IDLE' | 'PM' | 'KS' | 'ARB' | 'CMP' | 'HELP' | 'CACHE' | 'CATS' | 'HIST' | 'BTC'
@@ -37,6 +39,8 @@ interface TerminalState {
   fundPm: number       // available cash on Polymarket
   fundPct: number      // percentage of funds to use (0-1)
   pendingOrder: OrderConfirmation | null
+  activeOrders: Map<string, TrackedOrder>
+  fillHistory: FillEvent[]
   showPm: boolean
   showKs: boolean
   showDetail: boolean
@@ -98,6 +102,10 @@ interface TerminalState {
   pushCenterSnapshot: (snap: CenterSnapshot) => void
   navigateCenterHistory: (delta: -1 | 1) => void
   jumpToCenterHistory: (index: number) => void
+  trackOrder: (order: TrackedOrder) => void
+  updateOrderStatus: (orderId: string, status: TrackedOrder['status'], fillCount?: number) => void
+  addFill: (fill: FillEvent) => void
+  removeOrder: (orderId: string) => void
 }
 
 export const useStore = create<TerminalState>((set) => ({
@@ -114,6 +122,8 @@ export const useStore = create<TerminalState>((set) => ({
   fundPm: 0,
   fundPct: 1.0,
   pendingOrder: null,
+  activeOrders: new Map(),
+  fillHistory: [],
   showPm: true,
   showKs: true,
   showDetail: true,
@@ -212,5 +222,33 @@ export const useStore = create<TerminalState>((set) => ({
       compareResults: snap.compareResults,
       selectedIndex: null,
     }
+  }),
+
+  trackOrder: (order) => set((state) => {
+    const next = new Map(state.activeOrders)
+    next.set(order.orderId, order)
+    return { activeOrders: next }
+  }),
+
+  updateOrderStatus: (orderId, status, fillCount) => set((state) => {
+    const existing = state.activeOrders.get(orderId)
+    if (!existing) return {}
+    const next = new Map(state.activeOrders)
+    next.set(orderId, {
+      ...existing,
+      status,
+      fillCount: fillCount ?? existing.fillCount,
+    })
+    return { activeOrders: next }
+  }),
+
+  addFill: (fill) => set((state) => ({
+    fillHistory: [...state.fillHistory.slice(-49), fill],
+  })),
+
+  removeOrder: (orderId) => set((state) => {
+    const next = new Map(state.activeOrders)
+    next.delete(orderId)
+    return { activeOrders: next }
   }),
 }))
