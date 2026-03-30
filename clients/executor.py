@@ -128,8 +128,16 @@ def place_kalshi_order(
         "client_order_id": client_order_id,
     }
 
-    if price is not None and order_type == "limit":
-        # Kalshi v2 API accepts dollar prices
+    if order_type == "market":
+        # Kalshi requires a price even for market orders.
+        # If a price cap was provided (best ask + buffer from live data),
+        # use it. Otherwise fall back to $0.99 as a safety cap.
+        cap = f"{price:.6f}" if price is not None else "0.990000"
+        if side == "yes":
+            body["yes_price_dollars"] = cap
+        else:
+            body["no_price_dollars"] = cap
+    elif price is not None:
         if side == "yes":
             body["yes_price_dollars"] = f"{price:.6f}"
         else:

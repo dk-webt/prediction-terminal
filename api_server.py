@@ -642,10 +642,25 @@ async def websocket_trade(websocket: WebSocket):
                     try:
                         if order["platform"] == "kalshi":
                             from clients.executor import place_kalshi_order
+                            # For market orders, compute a price cap from live data
+                            # (best ask + 5c buffer) to avoid filling at extreme prices
+                            ks_price = order["price"]
+                            if order["order_type"] == "market" and ks_price is None and _btc_stream:
+                                ks_data = _btc_stream._kalshi_data
+                                if ks_data and not ks_data.get("error"):
+                                    side = order["side"]
+                                    if side == "yes":
+                                        best_ask = ks_data.get("yes_ask", 0)
+                                    else:
+                                        best_ask = ks_data.get("no_ask", 0)
+                                    if best_ask > 0:
+                                        ks_price = min(round(best_ask + 0.05, 2), 0.99)
+                                        log.info("ORDER %s: market cap from live data: best_ask=%.2f cap=%.2f",
+                                                 order_id, best_ask, ks_price)
                             result = await asyncio.to_thread(
                                 place_kalshi_order,
                                 order["ticker"], order["action"], order["side"],
-                                order["count"], order["price"], order["order_type"],
+                                order["count"], ks_price, order["order_type"],
                             )
                         else:
                             from clients.executor import place_polymarket_order
