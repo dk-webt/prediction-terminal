@@ -293,7 +293,22 @@ def place_polymarket_order(
         from py_clob_client.order_builder.constants import BUY, SELL
 
         pm_side = BUY if side.upper() == "BUY" else SELL
-        opts = PartialCreateOrderOptions(tick_size="0.01", neg_risk=False)
+
+        # Fetch neg_risk and tick_size from the CLOB for this token
+        neg_risk = False
+        tick_size = "0.01"
+        try:
+            market_info = client.get_order_book(token_id)
+            if isinstance(market_info, dict):
+                neg_risk = market_info.get("neg_risk", False)
+                ts = market_info.get("min_tick_size")
+                if ts:
+                    tick_size = str(ts)
+        except Exception:
+            pass
+        log.info("PM order: token=%s...  side=%s size=%s price=%s neg_risk=%s tick=%s",
+                 token_id[:20], pm_side, size, price, neg_risk, tick_size)
+        opts = PartialCreateOrderOptions(tick_size=tick_size, neg_risk=neg_risk)
 
         if order_type == "market":
             if price is not None:
