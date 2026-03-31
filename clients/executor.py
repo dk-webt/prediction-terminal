@@ -20,6 +20,9 @@ from config import (
     POLYMARKET_API_KEY,
     POLYMARKET_API_SECRET,
     POLYMARKET_API_PASSPHRASE,
+    POLYMARKET_BUILDER_KEY,
+    POLYMARKET_BUILDER_SECRET,
+    POLYMARKET_BUILDER_PASSPHRASE,
 )
 
 log = logging.getLogger(__name__)
@@ -225,7 +228,16 @@ _pm_client = None
 
 
 def _get_pm_client():
-    """Lazy-init the Polymarket CLOB client."""
+    """
+    Lazy-init the Polymarket CLOB client.
+
+    Architecture:
+      - Signer (MetaMask private key) signs orders but does NOT hold funds
+      - Funder (Safe/proxy wallet from PM Settings) holds USDC and positions
+      - L2 API creds authenticate CLOB requests (derived from private key)
+      - Builder keys enable gasless trading (optional, from PM Settings → Builder)
+      - signature_type=2 (GNOSIS_SAFE) for accounts with proxy/safe wallet
+    """
     global _pm_client
     if _pm_client is not None:
         return _pm_client
@@ -237,15 +249,14 @@ def _get_pm_client():
         from py_clob_client.client import ClobClient
         from py_clob_client.clob_types import ApiCreds
 
-        # Use explicit API creds from .env if available.
-        # Fall back to creating/deriving from private key if not set.
+        # L2 API creds: use from .env if stored, otherwise derive (one-time)
         if POLYMARKET_API_KEY and POLYMARKET_API_SECRET and POLYMARKET_API_PASSPHRASE:
             creds = ApiCreds(
                 api_key=POLYMARKET_API_KEY,
                 api_secret=POLYMARKET_API_SECRET,
                 api_passphrase=POLYMARKET_API_PASSPHRASE,
             )
-            log.info("Polymarket API creds loaded from .env")
+            log.info("Polymarket L2 API creds loaded from .env")
         else:
             temp = ClobClient(
                 "https://clob.polymarket.com",
@@ -253,17 +264,43 @@ def _get_pm_client():
                 chain_id=137,
             )
             creds = temp.create_or_derive_api_creds()
-            log.info("Polymarket API creds derived from private key")
+            log.info("Polymarket L2 API creds derived — store these in .env for faster startup:")
+            log.info("  POLYMARKET_API_KEY=%s", creds.api_key)
+            log.info("  POLYMARKET_API_SECRET=%s", creds.api_secret)
+            log.info("  POLYMARKET_API_PASSPHRASE=%s", creds.api_passphrase)
 
-        # signature_type=0 (EOA) — MetaMask wallet signs and holds funds
-        # signature_type=1 (POLY_PROXY) — proxy wallet, but signing fails for this account
-        _pm_client = ClobClient(
-            "https://clob.polymarket.com",
-            key=POLYMARKET_PRIVATE_KEY,
-            chain_id=137,
-            creds=creds,
-            signature_type=0,  # EOA
-        )
+        # Builder keys for gasless trading (optional)
+        builder_config = None
+        if POLYMARKET_BUILDER_KEY and POLYMARKET_BUILDER_SECRET and POLYMARKET_BUILDER_PASSPHRASE:
+            try:
+                from py_builder_signing_sdk.config import BuilderConfig
+                builder_config = BuilderConfig(
+                    api_key=POLYMARKET_BUILDER_KEY,
+                    api_secret=POLYMARKET_BUILDER_SECRET,
+                    api_passphrase=POLYMARKET_BUILDER_PASSPHRASE,
+                )
+                log.info("Polymarket builder keys loaded (gasless trading enabled)")
+            except ImportError:
+                log.warning("py-builder-signing-sdk not installed — builder keys ignored")
+            except Exception as e:
+                log.warning("Failed to load builder config: %s", e)
+
+        # signature_type=2 (GNOSIS_SAFE) for accounts with proxy/safe wallet
+        # funder = Safe wallet address from Polymarket Settings (holds funds)
+        kwargs = {
+            "host": "https://clob.polymarket.com",
+            "key": POLYMARKET_PRIVATE_KEY,
+            "chain_id": 137,
+            "creds": creds,
+            "signature_type": 2,  # GNOSIS_SAFE
+            "funder": POLYMARKET_WALLET_ADDRESS,
+        }
+        if builder_config:
+            kwargs["builder_config"] = builder_config
+
+        _pm_client = ClobClient(**kwargs)
+        log.info("Polymarket client initialized (signature_type=GNOSIS_SAFE, funder=%s)",
+                 POLYMARKET_WALLET_ADDRESS)
         return _pm_client
     except Exception as e:
         log.warning("Failed to init Polymarket client: %s", e)
@@ -349,6 +386,24 @@ def place_polymarket_order(
 
         return {"success": True, "data": resp if isinstance(resp, dict) else {"response": str(resp)}}
 
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def set_pm_allowances() -> dict:
+    """
+    Set USDC.e and conditional token allowances for the Polymarket exchange.
+    Must be called once before first trade. Requires POL for gas unless
+    builder keys are configured (gasless).
+    """
+    client = _get_pm_client()
+    if not client:
+        return {"success": False, "error": "Polymarket keys not configured"}
+
+    try:
+        resp = client.set_allowances()
+        log.info("Polymarket allowances set: %s", resp)
+        return {"success": True, "data": resp}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
