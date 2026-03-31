@@ -638,6 +638,30 @@ export default function App() {
           break
         }
 
+        case 'SETUP': {
+          const sub = (parts[1] || '').toUpperCase()
+          if (sub === 'PM') {
+            setLoading(true)
+            setProgressMsg('Setting Polymarket allowances (one-time)...')
+            fetch(`${API}/pm/setup`, { method: 'POST' })
+              .then((r) => r.json())
+              .then((data) => {
+                setLoading(false)
+                if (data.success) {
+                  setProgressMsg('Polymarket allowances set successfully')
+                } else {
+                  setErrorMsg(`Setup failed: ${data.error || 'unknown'}`)
+                }
+                setTimeout(() => { useStore.getState().setProgressMsg(''); useStore.getState().setErrorMsg('') }, 5000)
+              })
+              .catch((e) => { setLoading(false); setErrorMsg(String(e)) })
+          } else {
+            setErrorMsg('Usage: SETUP PM')
+            setTimeout(() => useStore.getState().setErrorMsg(''), 3000)
+          }
+          break
+        }
+
         case 'CATS': {
           setActiveView('CATS')
           setCenterView('CATS')

@@ -345,6 +345,17 @@ async def get_btc_positions():
         raise HTTPException(status_code=502, detail=str(exc))
 
 
+@app.post("/pm/setup")
+async def pm_setup():
+    """One-time Polymarket setup: set USDC.e + conditional token allowances."""
+    from clients.executor import set_pm_allowances
+    try:
+        result = await asyncio.to_thread(set_pm_allowances)
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @app.get("/cache/stats")
 async def get_cache_stats():
     from cache import cache_stats
