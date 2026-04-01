@@ -225,6 +225,7 @@ def get_kalshi_balance() -> dict:
 # ── Polymarket order placement ───────────────────────────────────────────────
 
 _pm_client = None
+_pm_approved_tokens: set[str] = set()  # token_ids with conditional allowance set
 
 
 def _get_pm_client():
@@ -330,16 +331,17 @@ def place_polymarket_order(
 
         pm_side = BUY if side.upper() == "BUY" else SELL
 
-        # For sells, ensure conditional token allowance is set for this token
-        if pm_side == SELL:
+        # For sells, ensure conditional token allowance is set (once per token_id)
+        if pm_side == SELL and token_id not in _pm_approved_tokens:
             try:
                 from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
                 client.update_balance_allowance(
                     BalanceAllowanceParams(asset_type=AssetType.CONDITIONAL, token_id=token_id)
                 )
-                log.info("PM conditional token allowance set for sell")
+                _pm_approved_tokens.add(token_id)
+                log.info("PM conditional token allowance set for %s...", token_id[:20])
             except Exception as e:
-                log.warning("PM conditional allowance failed (may already be set): %s", e)
+                log.warning("PM conditional allowance failed: %s", e)
 
         # Fetch neg_risk and tick_size from the CLOB for this token
         neg_risk = False
