@@ -330,6 +330,17 @@ def place_polymarket_order(
 
         pm_side = BUY if side.upper() == "BUY" else SELL
 
+        # For sells, ensure conditional token allowance is set for this token
+        if pm_side == SELL:
+            try:
+                from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
+                client.update_balance_allowance(
+                    BalanceAllowanceParams(asset_type=AssetType.CONDITIONAL, token_id=token_id)
+                )
+                log.info("PM conditional token allowance set for sell")
+            except Exception as e:
+                log.warning("PM conditional allowance failed (may already be set): %s", e)
+
         # Fetch neg_risk and tick_size from the CLOB for this token
         neg_risk = False
         tick_size = "0.01"
