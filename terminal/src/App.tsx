@@ -326,7 +326,7 @@ export default function App() {
 
   // ── Command runner ───────────────────────────────────────────────────────────
 
-  const runCommand = useCallback(
+  const runSingleCommand = useCallback(
     (input: string) => {
       const trimmed = input.trim()
       if (!trimmed) return
@@ -372,7 +372,7 @@ export default function App() {
       }
 
       if (cmd === 'R') {
-        if (prevCmdRef.current) runCommand(prevCmdRef.current)
+        if (prevCmdRef.current) runSingleCommand(prevCmdRef.current)
         return
       }
 
@@ -738,6 +738,17 @@ export default function App() {
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
+  )
+
+  // Pipe-separated multi-command: "buy pm yes 2 mkt | buy ks no 2 mkt"
+  const runCommand = useCallback(
+    (input: string) => {
+      const commands = input.split('|').map((s) => s.trim()).filter(Boolean)
+      for (const cmd of commands) {
+        runSingleCommand(cmd)
+      }
+    },
+    [runSingleCommand]
   )
 
   // ── Global keyboard shortcuts ────────────────────────────────────────────────
