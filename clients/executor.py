@@ -401,9 +401,21 @@ def set_pm_allowances() -> dict:
         return {"success": False, "error": "Polymarket keys not configured"}
 
     try:
-        resp = client.set_allowances()
-        log.info("Polymarket allowances set: %s", resp)
-        return {"success": True, "data": resp}
+        from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
+
+        # Approve USDC.e (collateral)
+        resp_collateral = client.update_balance_allowance(
+            BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
+        )
+        log.info("PM collateral allowance set: %s", resp_collateral)
+
+        # Approve conditional tokens
+        resp_conditional = client.update_balance_allowance(
+            BalanceAllowanceParams(asset_type=AssetType.CONDITIONAL)
+        )
+        log.info("PM conditional allowance set: %s", resp_conditional)
+
+        return {"success": True, "data": {"collateral": resp_collateral, "conditional": resp_conditional}}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
