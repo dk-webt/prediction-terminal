@@ -403,19 +403,13 @@ def set_pm_allowances() -> dict:
     try:
         from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
 
-        # Approve USDC.e (collateral)
+        # Approve USDC.e (collateral) — no token_id needed
         resp_collateral = client.update_balance_allowance(
             BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
         )
         log.info("PM collateral allowance set: %s", resp_collateral)
 
-        # Approve conditional tokens
-        resp_conditional = client.update_balance_allowance(
-            BalanceAllowanceParams(asset_type=AssetType.CONDITIONAL)
-        )
-        log.info("PM conditional allowance set: %s", resp_conditional)
-
-        return {"success": True, "data": {"collateral": resp_collateral, "conditional": resp_conditional}}
+        return {"success": True, "data": {"collateral": resp_collateral}}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
