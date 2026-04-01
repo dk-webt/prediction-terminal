@@ -697,6 +697,86 @@ async def websocket_btc(websocket: WebSocket):
 
 # ── /ws/trade — Order confirmation + execution ───────────────────────────────
 
+
+async def _execute_order(websocket, order_id: str, pending_orders: dict):
+    """Execute a pending order (shared by confirm flow and auto-execute)."""
+    order = pending_orders.pop(order_id, None)
+    if not order:
+        log.warning("ORDER %s: not found or expired", order_id)
+        await websocket.send_json({"type": "btc_order_result", "success": False, "error": "Order expired or not found"})
+        return
+    log.info("ORDER %s: executing %s %s %s x%s @ %s",
+             order_id, order["platform"], order["action"],
+             order["side"], order["count"], order.get("price", "MKT"))
+    try:
+        if order["platform"] == "kalshi":
+            from clients.executor import place_kalshi_order
+            ks_price = order["price"]
+            if order["order_type"] == "market" and ks_price is None and _btc_stream:
+                ks_data = _btc_stream._kalshi_data
+                if ks_data and not ks_data.get("error"):
+                    side = order["side"]
+                    if side == "yes":
+                        best_ask = ks_data.get("yes_ask", 0)
+                    else:
+                        best_ask = ks_data.get("no_ask", 0)
+                    log.info("ORDER %s: KS live data: side=%s yes_ask=%s no_ask=%s yes_bid=%s no_bid=%s",
+                             order_id, side,
+                             ks_data.get("yes_ask"), ks_data.get("no_ask"),
+                             ks_data.get("yes_bid"), ks_data.get("no_bid"))
+                    if best_ask > 0:
+                        ks_price = round(best_ask + 0.02, 2)
+                        log.info("ORDER %s: market cap: best_ask=%.2f cap=%.2f",
+                                 order_id, best_ask, ks_price)
+                    else:
+                        last = ks_data.get("last_price", 0)
+                        if last > 0:
+                            ks_price = round(last + 0.05, 2)
+                            log.info("ORDER %s: market cap from last_price: %.2f cap=%.2f",
+                                     order_id, last, ks_price)
+                else:
+                    log.warning("ORDER %s: _btc_stream exists but KS data missing/error", order_id)
+            result = await asyncio.to_thread(
+                place_kalshi_order,
+                order["ticker"], order["action"], order["side"],
+                int(order["count"]), ks_price, order["order_type"],
+            )
+        else:
+            from clients.executor import place_polymarket_order
+            pm_side = "BUY" if order["action"] == "buy" else "SELL"
+            pm_price = order["price"]
+            if order["order_type"] == "market" and pm_price is None and _btc_stream:
+                pm_data = _btc_stream._pm_data
+                if pm_data and not pm_data.get("error"):
+                    pm_order_side = order["side"]
+                    if pm_order_side in ("up", "yes"):
+                        best_ask = pm_data.get("up_ask", 0)
+                    else:
+                        best_ask = pm_data.get("down_ask", 0)
+                    if best_ask > 0:
+                        pm_price = round(best_ask + 0.02, 2)
+                        log.info("ORDER %s: PM market cap: best_ask=%.2f cap=%.2f",
+                                 order_id, best_ask, pm_price)
+            result = await asyncio.to_thread(
+                place_polymarket_order,
+                order["token_id"], pm_side,
+                order["count"], pm_price, order["order_type"],
+            )
+        if result.get("success"):
+            log.info("ORDER %s: success — %s", order_id, result.get("data", ""))
+            _track_order(order["platform"], order, result)
+            if order["platform"] == "polymarket" and order["order_type"] == "limit":
+                resp_data = result.get("data", {})
+                pm_oid = resp_data.get("orderID", resp_data.get("id", ""))
+                if pm_oid:
+                    _start_pm_heartbeat(pm_oid)
+        else:
+            log.warning("ORDER %s: failed — %s", order_id, result.get("error", "unknown"))
+        await websocket.send_json({"type": "btc_order_result", **result})
+    except Exception as exc:
+        log.error("ORDER %s: exception — %s", order_id, exc, exc_info=True)
+        await websocket.send_json({"type": "btc_order_result", "success": False, "error": str(exc)})
+
 @app.websocket("/ws/trade")
 async def websocket_trade(websocket: WebSocket):
     await websocket.accept()
@@ -718,6 +798,7 @@ async def websocket_trade(websocket: WebSocket):
                 order_type = data.get("order_type", "limit")
                 ticker = data.get("ticker", "")
                 token_id = data.get("token_id", "")
+                auto_execute = data.get("auto_execute", False)
 
                 plat_label = "KS" if platform == "kalshi" else "PM"
                 price_str = f" @ ${price:.2f}" if price else " MKT"
@@ -729,95 +810,21 @@ async def websocket_trade(websocket: WebSocket):
                     "count": count, "price": price, "order_type": order_type,
                     "ticker": ticker, "token_id": token_id,
                 }
-                await websocket.send_json({
-                    "type": "btc_order_confirm",
-                    "order_id": order_id,
-                    "summary": summary,
-                })
+
+                if auto_execute:
+                    # Piped commands: skip Y/N confirmation, execute immediately
+                    log.info("ORDER %s: auto-executing (piped) %s", order_id, summary)
+                    await _execute_order(websocket, order_id, pending_orders)
+                else:
+                    await websocket.send_json({
+                        "type": "btc_order_confirm",
+                        "order_id": order_id,
+                        "summary": summary,
+                    })
 
             elif cmd == "btc_order_execute":
                 order_id = data.get("order_id", "")
-                order = pending_orders.pop(order_id, None)
-                if not order:
-                    log.warning("ORDER %s: not found or expired", order_id)
-                    await websocket.send_json({"type": "btc_order_result", "success": False, "error": "Order expired or not found"})
-                else:
-                    log.info("ORDER %s: executing %s %s %s x%d @ %s",
-                             order_id, order["platform"], order["action"],
-                             order["side"], order["count"], order.get("price", "MKT"))
-                    try:
-                        if order["platform"] == "kalshi":
-                            from clients.executor import place_kalshi_order
-                            # For market orders, compute a price cap from live data
-                            # (best ask + 5c buffer) to avoid filling at extreme prices
-                            ks_price = order["price"]
-                            if order["order_type"] == "market" and ks_price is None and _btc_stream:
-                                ks_data = _btc_stream._kalshi_data
-                                if ks_data and not ks_data.get("error"):
-                                    side = order["side"]
-                                    if side == "yes":
-                                        best_ask = ks_data.get("yes_ask", 0)
-                                    else:
-                                        best_ask = ks_data.get("no_ask", 0)
-                                    log.info("ORDER %s: KS live data: side=%s yes_ask=%s no_ask=%s yes_bid=%s no_bid=%s",
-                                             order_id, side,
-                                             ks_data.get("yes_ask"), ks_data.get("no_ask"),
-                                             ks_data.get("yes_bid"), ks_data.get("no_bid"))
-                                    if best_ask > 0:
-                                        ks_price = round(best_ask + 0.02, 2)
-                                        log.info("ORDER %s: market cap: best_ask=%.2f cap=%.2f",
-                                                 order_id, best_ask, ks_price)
-                                    else:
-                                        # Fallback: use last_price if ask not available
-                                        last = ks_data.get("last_price", 0)
-                                        if last > 0:
-                                            ks_price = round(last + 0.05, 2)
-                                            log.info("ORDER %s: market cap from last_price: %.2f cap=%.2f",
-                                                     order_id, last, ks_price)
-                                else:
-                                    log.warning("ORDER %s: _btc_stream exists but KS data missing/error", order_id)
-                            result = await asyncio.to_thread(
-                                place_kalshi_order,
-                                order["ticker"], order["action"], order["side"],
-                                int(order["count"]), ks_price, order["order_type"],
-                            )
-                        else:
-                            from clients.executor import place_polymarket_order
-                            pm_side = "BUY" if order["action"] == "buy" else "SELL"
-                            # For PM market orders, compute price cap from live data
-                            pm_price = order["price"]
-                            if order["order_type"] == "market" and pm_price is None and _btc_stream:
-                                pm_data = _btc_stream._pm_data
-                                if pm_data and not pm_data.get("error"):
-                                    pm_order_side = order["side"]
-                                    if pm_order_side in ("up", "yes"):
-                                        best_ask = pm_data.get("up_ask", 0)
-                                    else:
-                                        best_ask = pm_data.get("down_ask", 0)
-                                    if best_ask > 0:
-                                        pm_price = round(best_ask + 0.02, 2)
-                                        log.info("ORDER %s: PM market cap: best_ask=%.2f cap=%.2f",
-                                                 order_id, best_ask, pm_price)
-                            result = await asyncio.to_thread(
-                                place_polymarket_order,
-                                order["token_id"], pm_side,
-                                order["count"], pm_price, order["order_type"],
-                            )
-                        if result.get("success"):
-                            log.info("ORDER %s: success — %s", order_id, result.get("data", ""))
-                            _track_order(order["platform"], order, result)
-                            # Start PM heartbeat for GTC limit orders
-                            if order["platform"] == "polymarket" and order["order_type"] == "limit":
-                                resp_data = result.get("data", {})
-                                pm_oid = resp_data.get("orderID", resp_data.get("id", ""))
-                                if pm_oid:
-                                    _start_pm_heartbeat(pm_oid)
-                        else:
-                            log.warning("ORDER %s: failed — %s", order_id, result.get("error", "unknown"))
-                        await websocket.send_json({"type": "btc_order_result", **result})
-                    except Exception as exc:
-                        log.error("ORDER %s: exception — %s", order_id, exc, exc_info=True)
-                        await websocket.send_json({"type": "btc_order_result", "success": False, "error": str(exc)})
+                await _execute_order(websocket, order_id, pending_orders)
 
             elif cmd == "btc_order_cancel":
                 order_id = data.get("order_id", "")

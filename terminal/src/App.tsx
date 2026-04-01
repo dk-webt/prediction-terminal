@@ -615,6 +615,7 @@ export default function App() {
             price: orderPrice ?? null,
             order_type: orderType,
             ticker, token_id: tokenId,
+            auto_execute: isPipedRef.current,
           })
           break
         }
@@ -741,12 +742,16 @@ export default function App() {
   )
 
   // Pipe-separated multi-command: "buy pm yes 2 mkt | buy ks no 2 mkt"
+  // Piped orders auto-execute without Y/N confirmation
+  const isPipedRef = useRef(false)
   const runCommand = useCallback(
     (input: string) => {
       const commands = input.split('|').map((s) => s.trim()).filter(Boolean)
+      isPipedRef.current = commands.length > 1
       for (const cmd of commands) {
         runSingleCommand(cmd)
       }
+      isPipedRef.current = false
     },
     [runSingleCommand]
   )
