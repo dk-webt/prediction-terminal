@@ -120,10 +120,10 @@ export default function App() {
         const upBid = typeof pm?.up_bid === 'number' ? pm.up_bid : null
         const noBid = typeof ks?.no_bid === 'number' ? ks.no_bid : null
         const downBid = typeof pm?.down_bid === 'number' ? pm.down_bid : null
-        const chainlink = typeof snap.btc_chainlink === 'number' ? snap.btc_chainlink : null
-        const binance = typeof snap.btc_binance === 'number' ? snap.btc_binance : null
+        const coinbase = typeof snap.btc_coinbase === 'number' ? snap.btc_coinbase : null
+        const kraken = typeof snap.btc_kraken === 'number' ? snap.btc_kraken : null
 
-        const priceGap = (chainlink !== null && binance !== null) ? chainlink - binance : null
+        const priceGap = (coinbase !== null && kraken !== null) ? coinbase - kraken : null
         const comboA = (yesBid !== null && downBid !== null) ? yesBid + downBid : null
         const comboB = (noBid !== null && upBid !== null) ? noBid + upBid : null
 

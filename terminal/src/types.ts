@@ -102,8 +102,8 @@ export interface BtcSnapshot {
   rolling?: boolean
   kalshi_last_update?: string
   polymarket_last_update?: string
-  btc_chainlink?: number
-  btc_binance?: number
+  btc_coinbase?: number
+  btc_kraken?: number
   btc_price_gap?: number
 }
 

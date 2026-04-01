@@ -190,7 +190,7 @@ function BtcPriceGapChart() {
 
   return (
     <div className="btc-chart-container">
-      <div className="btc-chart-title">ORACLE GAP: CHAINLINK - BINANCE (USD)</div>
+      <div className="btc-chart-title">PRICE GAP: COINBASE - KRAKEN (USD)</div>
       <div ref={containerRef} />
     </div>
   )
