@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { createChart, CrosshairMode, LineStyle, LineSeries } from 'lightweight-charts'
+import type { IChartApi, ISeriesApi, UTCTimestamp } from 'lightweight-charts'
 import { useStore } from '../store'
 import type { BtcSnapshot } from '../types'
 
@@ -108,6 +110,190 @@ function timeRemaining(endIso: string | undefined): string {
   } catch {
     return '---'
   }
+}
+
+const CHART_OPTIONS = {
+  layout: {
+    background: { color: '#0a0800' },
+    textColor: '#996800',
+    fontFamily: "'Courier New', monospace",
+    fontSize: 10,
+  },
+  grid: {
+    vertLines: { color: '#2a1a00' },
+    horzLines: { color: '#2a1a00' },
+  },
+  crosshair: { mode: CrosshairMode.Normal },
+  timeScale: { timeVisible: true, secondsVisible: false },
+  rightPriceScale: { borderColor: '#2a1a00' },
+} as const
+
+function BtcPriceGapChart() {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<IChartApi | null>(null)
+  const seriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    const chart = createChart(containerRef.current, {
+      ...CHART_OPTIONS,
+      height: 200,
+      width: containerRef.current.clientWidth,
+    })
+    const series = chart.addSeries(LineSeries, {
+      color: '#ffb000',
+      lineWidth: 2,
+      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+      title: 'Gap ($)',
+    })
+    chartRef.current = chart
+    seriesRef.current = series
+
+    const ro = new ResizeObserver(entries => {
+      const { width } = entries[0].contentRect
+      chart.applyOptions({ width })
+    })
+    ro.observe(containerRef.current)
+
+    return () => { ro.disconnect(); chart.remove() }
+  }, [])
+
+  // Subscribe to store for incremental updates
+  useEffect(() => {
+    let lastLen = 0
+    const unsub = useStore.subscribe((state) => {
+      const pts = state.btcTimeSeries.points
+      if (!seriesRef.current) return
+      if (pts.length < lastLen) {
+        // Window reset — re-set all data
+        seriesRef.current.setData(
+          pts.filter(p => p.priceGap != null).map(p => ({
+            time: p.time as UTCTimestamp,
+            value: p.priceGap!,
+          }))
+        )
+        lastLen = pts.length
+      } else if (pts.length > lastLen) {
+        for (let i = lastLen; i < pts.length; i++) {
+          if (pts[i].priceGap != null) {
+            seriesRef.current.update({
+              time: pts[i].time as UTCTimestamp,
+              value: pts[i].priceGap!,
+            })
+          }
+        }
+        lastLen = pts.length
+      }
+    })
+    return unsub
+  }, [])
+
+  return (
+    <div className="btc-chart-container">
+      <div className="btc-chart-title">ORACLE GAP: CHAINLINK - BINANCE (USD)</div>
+      <div ref={containerRef} />
+    </div>
+  )
+}
+
+function BtcArbitrageChart() {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<IChartApi | null>(null)
+  const comboARef = useRef<ISeriesApi<'Line'> | null>(null)
+  const comboBRef = useRef<ISeriesApi<'Line'> | null>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    const chart = createChart(containerRef.current, {
+      ...CHART_OPTIONS,
+      height: 200,
+      width: containerRef.current.clientWidth,
+    })
+
+    const seriesA = chart.addSeries(LineSeries, {
+      color: '#00cc44',
+      lineWidth: 2,
+      priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
+      title: 'KS Yes + PM Down',
+    })
+    const seriesB = chart.addSeries(LineSeries, {
+      color: '#ffb000',
+      lineWidth: 2,
+      priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
+      title: 'KS No + PM Up',
+    })
+
+    // Break-even reference line at 1.0
+    seriesA.createPriceLine({
+      price: 1.0,
+      color: '#555544',
+      lineWidth: 1,
+      lineStyle: LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: '',
+    })
+
+    chartRef.current = chart
+    comboARef.current = seriesA
+    comboBRef.current = seriesB
+
+    const ro = new ResizeObserver(entries => {
+      const { width } = entries[0].contentRect
+      chart.applyOptions({ width })
+    })
+    ro.observe(containerRef.current)
+
+    return () => { ro.disconnect(); chart.remove() }
+  }, [])
+
+  useEffect(() => {
+    let lastLen = 0
+    const unsub = useStore.subscribe((state) => {
+      const pts = state.btcTimeSeries.points
+      if (!comboARef.current || !comboBRef.current) return
+      if (pts.length < lastLen) {
+        // Window reset
+        comboARef.current.setData(
+          pts.filter(p => p.comboA != null).map(p => ({
+            time: p.time as UTCTimestamp, value: p.comboA!,
+          }))
+        )
+        comboBRef.current.setData(
+          pts.filter(p => p.comboB != null).map(p => ({
+            time: p.time as UTCTimestamp, value: p.comboB!,
+          }))
+        )
+        lastLen = pts.length
+      } else if (pts.length > lastLen) {
+        for (let i = lastLen; i < pts.length; i++) {
+          if (pts[i].comboA != null) {
+            comboARef.current.update({
+              time: pts[i].time as UTCTimestamp, value: pts[i].comboA!,
+            })
+          }
+          if (pts[i].comboB != null) {
+            comboBRef.current.update({
+              time: pts[i].time as UTCTimestamp, value: pts[i].comboB!,
+            })
+          }
+        }
+        lastLen = pts.length
+      }
+    })
+    return unsub
+  }, [])
+
+  return (
+    <div className="btc-chart-container">
+      <div className="btc-chart-title">
+        ARB COMBOS: <span style={{ color: '#00cc44' }}>KS YES + PM DOWN</span>
+        {' / '}
+        <span style={{ color: '#ffb000' }}>KS NO + PM UP</span>
+        {' (1.0 = break-even)'}
+      </div>
+      <div ref={containerRef} />
+    </div>
+  )
 }
 
 export default function BtcPanel() {
@@ -309,6 +495,12 @@ export default function BtcPanel() {
             <div className="btc-error">No active Polymarket BTC 15-min market found</div>
           )}
         </div>
+      </div>
+
+      {/* Time Series Charts */}
+      <div className="btc-charts-section">
+        <BtcPriceGapChart />
+        <BtcArbitrageChart />
       </div>
 
       <BtcFooter snapshot={btcSnapshot} />

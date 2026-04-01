@@ -103,6 +103,39 @@ export default function App() {
         state.setBtcSnapshot(msg as never)
         state.setLoading(false)
         state.setProgressMsg('')
+
+        // ── Time series derivation ──────────────────────────────────────
+        const snap = msg as Record<string, unknown>
+        const ks = snap.kalshi as Record<string, unknown> | null
+        const pm = snap.polymarket as Record<string, unknown> | null
+
+        // Detect window roll (close_time changed)
+        const windowEnd = (ks?.close_time || pm?.end_time || '') as string
+        if (windowEnd && windowEnd !== state.btcTimeSeries.windowId) {
+          state.resetBtcTimeSeries(windowEnd)
+        }
+
+        // Compute derived values
+        const yesBid = typeof ks?.yes_bid === 'number' ? ks.yes_bid : null
+        const upBid = typeof pm?.up_bid === 'number' ? pm.up_bid : null
+        const noBid = typeof ks?.no_bid === 'number' ? ks.no_bid : null
+        const downBid = typeof pm?.down_bid === 'number' ? pm.down_bid : null
+        const chainlink = typeof snap.btc_chainlink === 'number' ? snap.btc_chainlink : null
+        const binance = typeof snap.btc_binance === 'number' ? snap.btc_binance : null
+
+        const priceGap = (chainlink !== null && binance !== null) ? chainlink - binance : null
+        const comboA = (yesBid !== null && downBid !== null) ? yesBid + downBid : null
+        const comboB = (noBid !== null && upBid !== null) ? noBid + upBid : null
+
+        // Ensure monotonic timestamps for lightweight-charts
+        const pts = useStore.getState().btcTimeSeries.points
+        const lastTime = pts.length > 0 ? pts[pts.length - 1].time : 0
+        let time = Math.floor(Date.now() / 1000)
+        if (time <= lastTime) time = lastTime + 1
+
+        if (priceGap !== null || comboA !== null || comboB !== null) {
+          state.appendBtcTick({ time, priceGap, comboA, comboB })
+        }
       } else if (msg.type === 'btc_stopped') {
         useStore.getState().setBtcAutoRefresh(false)
       } else if (msg.type === 'btc_debug_status') {

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@tanstack/react-table": "^8.20.0",
+    "lightweight-charts": "^5.1.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

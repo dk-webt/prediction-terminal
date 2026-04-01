@@ -102,6 +102,16 @@ export interface BtcSnapshot {
   rolling?: boolean
   kalshi_last_update?: string
   polymarket_last_update?: string
+  btc_chainlink?: number
+  btc_binance?: number
+  btc_price_gap?: number
+}
+
+export interface BtcTimeSeriesPoint {
+  time: number             // Unix seconds (monotonic, for lightweight-charts)
+  priceGap: number | null  // chainlink - binance
+  comboA: number | null    // KS yes_bid + PM down_bid
+  comboB: number | null    // KS no_bid + PM up_bid
 }
 
 export interface OrderConfirmation {

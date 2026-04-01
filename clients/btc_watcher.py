@@ -194,6 +194,7 @@ PM_CLOB = "https://clob.polymarket.com"
 PM_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 PM_CRYPTO_PRICE = "https://polymarket.com/api/crypto/crypto-price"
 PM_USER_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/user"
+PM_RTDS_URL = "wss://ws-live-data.polymarket.com"
 
 
 def fetch_pm_strike_price(event_start_time: str, end_time: str) -> float | None:
@@ -444,6 +445,10 @@ class BtcStreamManager:
         # Polymarket WS state
         self._pm_ws = None               # active market channel WS reference
 
+        # RTDS live BTC price feeds (Chainlink + Binance)
+        self._chainlink_price: float | None = None
+        self._binance_price: float | None = None
+
         # Signals WS loops to reconnect with new tokens/tickers
         self._pm_reconnect = asyncio.Event()
         self._pm_user_reconnect = asyncio.Event()  # separate for user channel
@@ -486,6 +491,7 @@ class BtcStreamManager:
             log.warning("Kalshi RSA keys not configured — no Kalshi streaming available")
 
         self._tasks.append(asyncio.create_task(self._pm_ws_loop()))
+        self._tasks.append(asyncio.create_task(self._rtds_ws_loop()))
         self._tasks.append(asyncio.create_task(self._window_roll_loop()))
 
         # Start PM user channel for fill/order tracking if creds configured
@@ -565,6 +571,13 @@ class BtcStreamManager:
             "rolling": self._rolling,
             "kalshi_last_update": self._ks_last_update,
             "polymarket_last_update": self._pm_last_update,
+            "btc_chainlink": self._chainlink_price,
+            "btc_binance": self._binance_price,
+            "btc_price_gap": (
+                self._chainlink_price - self._binance_price
+                if self._chainlink_price is not None and self._binance_price is not None
+                else None
+            ),
         }
         try:
             await self._on_update(snapshot)
@@ -1014,6 +1027,120 @@ class BtcStreamManager:
             except Exception:
                 return
             await asyncio.sleep(self.PM_PING_INTERVAL)
+
+    # ── RTDS: live BTC price feeds (Chainlink + Binance) ────────────────────
+
+    RTDS_PING_INTERVAL = 5  # seconds — stricter than market channel
+
+    async def _rtds_ws_loop(self):
+        """
+        Connect to Polymarket RTDS for live BTC spot prices.
+        Subscribes to both Chainlink (PM's oracle) and Binance feeds.
+        """
+        import websockets
+
+        while self._running:
+            try:
+                log.info("Connecting to RTDS for live BTC price feeds")
+                async with websockets.connect(
+                    PM_RTDS_URL,
+                    ping_interval=None,
+                    ping_timeout=None,
+                    close_timeout=5,
+                ) as ws:
+                    # Subscribe to both feeds
+                    await ws.send(json.dumps({
+                        "action": "subscribe",
+                        "subscriptions": [
+                            {"topic": "crypto_prices_chainlink", "type": "price", "filters": "btc/usd"},
+                            {"topic": "crypto_prices", "type": "price", "filters": "btcusdt"},
+                        ],
+                    }))
+                    log.info("RTDS subscribed: chainlink btc/usd + binance btcusdt")
+
+                    recv_task = asyncio.create_task(self._rtds_recv_loop(ws))
+                    ping_task = asyncio.create_task(self._rtds_ping_loop(ws))
+
+                    done, pending = await asyncio.wait(
+                        [recv_task, ping_task],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    for t in pending:
+                        t.cancel()
+                    for t in done:
+                        try:
+                            t.result()
+                        except Exception:
+                            pass
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.warning("RTDS WS error, reconnecting in 3s: %s", e)
+                await asyncio.sleep(3)
+
+    async def _rtds_recv_loop(self, ws):
+        """Receive live BTC price updates from RTDS."""
+        import websockets
+        while self._running:
+            try:
+                raw = await asyncio.wait_for(ws.recv(), timeout=30)
+            except asyncio.TimeoutError:
+                log.warning("RTDS inactivity timeout (30s), reconnecting")
+                return
+            except websockets.exceptions.ConnectionClosed:
+                log.info("RTDS connection closed")
+                return
+
+            if raw == "PONG":
+                continue
+
+            try:
+                msg = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            topic = msg.get("topic", "")
+            payload = msg.get("payload")
+            if not payload:
+                continue
+
+            # Extract price from payload
+            price = None
+            if isinstance(payload, dict):
+                price = payload.get("price") or payload.get("p")
+            elif isinstance(payload, (int, float)):
+                price = payload
+
+            if price is None:
+                continue
+
+            try:
+                price = float(price)
+            except (TypeError, ValueError):
+                continue
+
+            updated = False
+            if topic == "crypto_prices_chainlink":
+                if price != self._chainlink_price:
+                    self._chainlink_price = price
+                    updated = True
+            elif topic == "crypto_prices":
+                if price != self._binance_price:
+                    self._binance_price = price
+                    updated = True
+
+            if updated:
+                await self._push_update()
+
+    async def _rtds_ping_loop(self, ws):
+        """Send PING to RTDS every 5 seconds."""
+        while self._running:
+            try:
+                await ws.send("PING")
+            except Exception:
+                return
+            await asyncio.sleep(self.RTDS_PING_INTERVAL)
 
     # ── Polymarket: dynamic subscription updates ────────────────────────────
 

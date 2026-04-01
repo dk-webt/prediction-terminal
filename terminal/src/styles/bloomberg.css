@@ -625,6 +625,29 @@ html, body, #root {
   padding: 8px;
 }
 
+/* ── BTC Charts ──────────────────────────────────────────────────────── */
+
+.btc-charts-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px;
+}
+
+.btc-chart-container {
+  border: 1px solid var(--border);
+  background: #0a0800;
+}
+
+.btc-chart-title {
+  padding: 4px 8px;
+  font-size: 10px;
+  color: var(--amber-dim);
+  letter-spacing: 1px;
+  background: var(--bg-header, #0d0a00);
+  border-bottom: 1px solid var(--border);
+}
+
 .btc-footer {
   padding: 4px 8px;
   border-top: 1px solid var(--border);

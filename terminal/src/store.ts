@@ -5,6 +5,7 @@ import type {
   CompareResult,
   CacheStats,
   BtcSnapshot,
+  BtcTimeSeriesPoint,
   OrderConfirmation,
   TrackedOrder,
   FillEvent,
@@ -35,6 +36,7 @@ interface TerminalState {
   categories: { polymarket: string[]; kalshi: string[] } | null
   btcSnapshot: BtcSnapshot | null
   btcAutoRefresh: boolean
+  btcTimeSeries: { points: BtcTimeSeriesPoint[]; windowId: string }
   fundKs: number       // available cash on Kalshi
   fundPm: number       // available cash on Polymarket
   fundPct: number      // percentage of funds to use (0-1)
@@ -77,6 +79,8 @@ interface TerminalState {
   setCategories: (v: { polymarket: string[]; kalshi: string[] } | null) => void
   setBtcSnapshot: (v: BtcSnapshot | null) => void
   setBtcAutoRefresh: (v: boolean) => void
+  appendBtcTick: (point: BtcTimeSeriesPoint) => void
+  resetBtcTimeSeries: (windowId: string) => void
   setFundKs: (v: number) => void
   setFundPm: (v: number) => void
   setFundPct: (v: number) => void
@@ -118,6 +122,7 @@ export const useStore = create<TerminalState>((set) => ({
   categories: null,
   btcSnapshot: null,
   btcAutoRefresh: false,
+  btcTimeSeries: { points: [], windowId: '' },
   fundKs: 0,
   fundPm: 0,
   fundPct: 1.0,
@@ -153,6 +158,14 @@ export const useStore = create<TerminalState>((set) => ({
   setCategories: (categories) => set({ categories }),
   setBtcSnapshot: (btcSnapshot) => set({ btcSnapshot }),
   setBtcAutoRefresh: (btcAutoRefresh) => set({ btcAutoRefresh }),
+  appendBtcTick: (point) => set((state) => {
+    const pts = state.btcTimeSeries.points
+    const next = pts.length >= 2000 ? [...pts.slice(-1999), point] : [...pts, point]
+    return { btcTimeSeries: { ...state.btcTimeSeries, points: next } }
+  }),
+  resetBtcTimeSeries: (windowId) => set((state) => ({
+    btcTimeSeries: { points: [], windowId },
+  })),
   setFundKs: (fundKs) => set({ fundKs }),
   setFundPm: (fundPm) => set({ fundPm }),
   setFundPct: (fundPct) => set({ fundPct }),
