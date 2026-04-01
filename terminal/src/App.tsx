@@ -557,11 +557,13 @@ export default function App() {
             break
           }
 
-          const orderCount = parseInt(countStr, 10)
-          if (isNaN(orderCount) || orderCount <= 0) {
-            setErrorMsg('Count must be a positive integer')
+          const rawCount = parseFloat(countStr)
+          if (isNaN(rawCount) || rawCount <= 0) {
+            setErrorMsg('Count must be a positive number')
             break
           }
+          // Kalshi uses whole contracts, PM supports fractional shares
+          const orderCount = platToken === 'KS' ? Math.floor(rawCount) : rawCount
 
           const isMkt = priceOrMkt === 'MKT'
           const orderPrice = isMkt ? undefined : priceOrMkt ? parseFloat(priceOrMkt) : undefined

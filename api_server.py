@@ -710,7 +710,7 @@ async def websocket_trade(websocket: WebSocket):
                 platform = data.get("platform", "")
                 action = data.get("action", "")
                 side = data.get("side", "")
-                count = int(data.get("count", 0))
+                count = float(data.get("count", 0))
                 price = data.get("price")
                 order_type = data.get("order_type", "limit")
                 ticker = data.get("ticker", "")
@@ -763,7 +763,7 @@ async def websocket_trade(websocket: WebSocket):
                             result = await asyncio.to_thread(
                                 place_kalshi_order,
                                 order["ticker"], order["action"], order["side"],
-                                order["count"], ks_price, order["order_type"],
+                                int(order["count"]), ks_price, order["order_type"],
                             )
                         else:
                             from clients.executor import place_polymarket_order
