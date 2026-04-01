@@ -363,8 +363,10 @@ export default function App() {
         return
       }
 
-      // Unsubscribe from BTC stream when navigating away
-      if (cmd !== 'BTC' && useStore.getState().btcAutoRefresh) {
+      // Only unsubscribe from BTC when switching to a different view
+      // Keep BTC alive for commands that don't change the view (FUND, BUY, SELL, POS, etc.)
+      const viewChangingCmds = ['PM', 'KS', 'ARB', 'CMP', 'HELP', 'CACHE', 'CATS', 'HIST']
+      if (viewChangingCmds.includes(cmd) && useStore.getState().btcAutoRefresh) {
         manager?.unsubscribeBtc()
         setBtcAutoRefresh(false)
       }

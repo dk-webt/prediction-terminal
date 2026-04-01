@@ -689,7 +689,10 @@ async def websocket_btc(websocket: WebSocket):
     finally:
         _btc_subscribers.discard(websocket)
         if not _btc_subscribers and _btc_stream is not None:
-            await _btc_stop()
+            # Delay before stopping — allows StrictMode remount or brief disconnects
+            await asyncio.sleep(2)
+            if not _btc_subscribers and _btc_stream is not None:
+                await _btc_stop()
 
 
 # ── /ws/trade — Order confirmation + execution ───────────────────────────────
