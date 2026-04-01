@@ -109,9 +109,11 @@ export interface BtcSnapshot {
 
 export interface BtcTimeSeriesPoint {
   time: number             // Unix seconds (monotonic, for lightweight-charts)
-  priceGap: number | null  // chainlink - binance
+  priceGap: number | null  // coinbase - kraken
   comboA: number | null    // KS yes_bid + PM down_bid
   comboB: number | null    // KS no_bid + PM up_bid
+  coinbase: number | null  // Coinbase BTC-USD (Kalshi source proxy)
+  kraken: number | null    // Kraken XBT/USD (PM source proxy)
 }
 
 export interface OrderConfirmation {

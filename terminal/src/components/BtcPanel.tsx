@@ -296,6 +296,67 @@ function BtcArbitrageChart() {
   )
 }
 
+function BtcSpotChart({ field, title, color }: { field: 'coinbase' | 'kraken'; title: string; color: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const seriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    const chart = createChart(containerRef.current, {
+      ...CHART_OPTIONS,
+      height: 200,
+      width: containerRef.current.clientWidth,
+    })
+    const series = chart.addSeries(LineSeries, {
+      color,
+      lineWidth: 2,
+      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+    })
+    seriesRef.current = series
+
+    const ro = new ResizeObserver(entries => {
+      const { width } = entries[0].contentRect
+      chart.applyOptions({ width })
+    })
+    ro.observe(containerRef.current)
+
+    return () => { ro.disconnect(); chart.remove() }
+  }, [color])
+
+  useEffect(() => {
+    let lastLen = 0
+    const unsub = useStore.subscribe((state) => {
+      const pts = state.btcTimeSeries.points
+      if (!seriesRef.current) return
+      if (pts.length < lastLen) {
+        seriesRef.current.setData(
+          pts.filter(p => p[field] != null).map(p => ({
+            time: p.time as UTCTimestamp, value: p[field]!,
+          }))
+        )
+        lastLen = pts.length
+      } else if (pts.length > lastLen) {
+        for (let i = lastLen; i < pts.length; i++) {
+          if (pts[i][field] != null) {
+            seriesRef.current.update({
+              time: pts[i].time as UTCTimestamp, value: pts[i][field]!,
+            })
+          }
+        }
+        lastLen = pts.length
+      }
+    })
+    return unsub
+  }, [field])
+
+  return (
+    <div className="btc-chart-container">
+      <div className="btc-chart-title">{title}</div>
+      <div ref={containerRef} />
+    </div>
+  )
+}
+
 export default function BtcPanel() {
   const { btcSnapshot, loading } = useStore()
 
@@ -501,6 +562,8 @@ export default function BtcPanel() {
       <div className="btc-charts-section">
         <BtcPriceGapChart />
         <BtcArbitrageChart />
+        <BtcSpotChart field="coinbase" title="KALSHI SOURCE: COINBASE BTC-USD" color="#ffcc44" />
+        <BtcSpotChart field="kraken" title="PM SOURCE: KRAKEN XBT/USD" color="#00cc44" />
       </div>
 
       <BtcFooter snapshot={btcSnapshot} />

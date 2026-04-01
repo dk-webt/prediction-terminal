@@ -133,8 +133,8 @@ export default function App() {
         let time = Math.floor(Date.now() / 1000)
         if (time <= lastTime) time = lastTime + 1
 
-        if (priceGap !== null || comboA !== null || comboB !== null) {
-          state.appendBtcTick({ time, priceGap, comboA, comboB })
+        if (priceGap !== null || comboA !== null || comboB !== null || coinbase !== null || kraken !== null) {
+          state.appendBtcTick({ time, priceGap, comboA, comboB, coinbase, kraken })
         }
       } else if (msg.type === 'btc_stopped') {
         useStore.getState().setBtcAutoRefresh(false)
