@@ -359,29 +359,19 @@ def place_polymarket_order(
         opts = PartialCreateOrderOptions(tick_size=tick_size, neg_risk=neg_risk)
 
         if order_type == "market":
-            if price is not None:
-                # Capped market order: FOK limit at cap price for slippage protection
-                signed = client.create_order(
-                    OrderArgs(
-                        token_id=token_id,
-                        price=price,
-                        size=size,
-                        side=pm_side,
-                    ),
-                    options=opts,
-                )
-                resp = client.post_order(signed, orderType=OrderType.FOK)
-            else:
-                # True market order (no cap) — create+sign, then post
-                signed = client.create_market_order(
-                    MarketOrderArgs(
-                        token_id=token_id,
-                        amount=size,
-                        side=pm_side,
-                    ),
-                    options=opts,
-                )
-                resp = client.post_order(signed, orderType=OrderType.FOK)
+            if price is None:
+                return {"success": False, "error": "PM market order requires price cap from live data"}
+            # Market order as FOK limit at cap price — size is always share count
+            signed = client.create_order(
+                OrderArgs(
+                    token_id=token_id,
+                    price=price,
+                    size=size,
+                    side=pm_side,
+                ),
+                options=opts,
+            )
+            resp = client.post_order(signed, orderType=OrderType.FOK)
         else:
             # Limit order — create_and_post_order always posts as GTC
             resp = client.create_and_post_order(
