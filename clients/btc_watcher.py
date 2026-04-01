@@ -1078,7 +1078,11 @@ class BtcStreamManager:
     RTDS_PING_INTERVAL = 5  # seconds — RTDS requires PING every 5s
 
     async def _rtds_ws_loop(self):
-        """Stream live Chainlink BTC/USD price from Polymarket RTDS."""
+        """
+        Stream live Chainlink BTC/USD price from Polymarket RTDS.
+        Subscribes to ALL chainlink prices (filters break the subscription)
+        and filters client-side for btc/usd.
+        """
         import websockets
 
         while self._running:
@@ -1087,15 +1091,15 @@ class BtcStreamManager:
                 async with websockets.connect(
                     PM_RTDS_URL, ping_interval=None, close_timeout=5,
                 ) as ws:
+                    # Subscribe to all chainlink prices — filtered subscriptions
+                    # don't work reliably; filter client-side instead
                     await ws.send(json.dumps({
                         "action": "subscribe",
-                        "subscriptions": [{
-                            "topic": "crypto_prices_chainlink",
-                            "type": "*",
-                            "filters": json.dumps({"symbol": "btc/usd"}),
-                        }],
+                        "subscriptions": [
+                            {"topic": "crypto_prices_chainlink", "type": "*"},
+                        ],
                     }))
-                    log.info("RTDS subscribed: chainlink btc/usd")
+                    log.info("RTDS subscribed: all chainlink prices (filtering for btc/usd)")
 
                     recv_task = asyncio.create_task(self._rtds_recv_loop(ws))
                     ping_task = asyncio.create_task(self._rtds_ping_loop(ws))
@@ -1123,10 +1127,9 @@ class BtcStreamManager:
         import websockets
         while self._running:
             try:
-                # Chainlink updates are infrequent; use long timeout
-                raw = await asyncio.wait_for(ws.recv(), timeout=120)
+                raw = await asyncio.wait_for(ws.recv(), timeout=30)
             except asyncio.TimeoutError:
-                log.warning("RTDS inactivity (120s), reconnecting")
+                log.warning("RTDS inactivity (30s), reconnecting")
                 return
             except websockets.exceptions.ConnectionClosed:
                 log.info("RTDS connection closed")
@@ -1147,21 +1150,12 @@ class BtcStreamManager:
             if not isinstance(payload, dict):
                 continue
 
-            price = None
-            msg_type = msg.get("type", "")
+            # Filter for btc/usd only
+            symbol = payload.get("symbol", "")
+            if symbol and symbol != "btc/usd":
+                continue
 
-            if msg_type == "subscribe" and "data" in payload:
-                # Historical snapshot on subscribe — take the latest point
-                data = payload["data"]
-                if isinstance(data, list) and data:
-                    last_point = data[-1]
-                    price = last_point.get("value") if isinstance(last_point, dict) else None
-                    log.info("RTDS chainlink snapshot: %d points, latest=$%.2f",
-                             len(data), float(price) if price else 0)
-            elif "value" in payload:
-                # Live update
-                price = payload.get("value")
-
+            price = payload.get("value")
             if price is None:
                 continue
 
