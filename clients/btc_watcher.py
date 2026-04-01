@@ -194,8 +194,8 @@ PM_CLOB = "https://clob.polymarket.com"
 PM_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 PM_CRYPTO_PRICE = "https://polymarket.com/api/crypto/crypto-price"
 PM_USER_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/user"
+PM_RTDS_URL = "wss://ws-live-data.polymarket.com"
 COINBASE_WS_URL = "wss://ws-feed.exchange.coinbase.com"
-KRAKEN_WS_URL = "wss://ws.kraken.com/"
 
 
 def fetch_pm_strike_price(event_start_time: str, end_time: str) -> float | None:
@@ -446,9 +446,9 @@ class BtcStreamManager:
         # Polymarket WS state
         self._pm_ws = None               # active market channel WS reference
 
-        # Live BTC spot price feeds (Coinbase + Kraken)
-        self._coinbase_price: float | None = None
-        self._kraken_price: float | None = None
+        # Live BTC spot price feeds
+        self._coinbase_price: float | None = None   # Coinbase BTC-USD (Kalshi/CF Benchmarks source)
+        self._chainlink_price: float | None = None  # Chainlink BTC/USD via PM RTDS (PM settlement source)
 
         # Signals WS loops to reconnect with new tokens/tickers
         self._pm_reconnect = asyncio.Event()
@@ -493,7 +493,7 @@ class BtcStreamManager:
 
         self._tasks.append(asyncio.create_task(self._pm_ws_loop()))
         self._tasks.append(asyncio.create_task(self._coinbase_ws_loop()))
-        self._tasks.append(asyncio.create_task(self._kraken_ws_loop()))
+        self._tasks.append(asyncio.create_task(self._rtds_ws_loop()))
         self._tasks.append(asyncio.create_task(self._window_roll_loop()))
 
         # Start PM user channel for fill/order tracking if creds configured
@@ -574,10 +574,10 @@ class BtcStreamManager:
             "kalshi_last_update": self._ks_last_update,
             "polymarket_last_update": self._pm_last_update,
             "btc_coinbase": self._coinbase_price,
-            "btc_kraken": self._kraken_price,
+            "btc_chainlink": self._chainlink_price,
             "btc_price_gap": (
-                self._coinbase_price - self._kraken_price
-                if self._coinbase_price is not None and self._kraken_price is not None
+                self._coinbase_price - self._chainlink_price
+                if self._coinbase_price is not None and self._chainlink_price is not None
                 else None
             ),
         }
@@ -1075,58 +1075,113 @@ class BtcStreamManager:
                 log.warning("Coinbase WS error, reconnecting in 3s: %s", e)
             await asyncio.sleep(3)
 
-    async def _kraken_ws_loop(self):
-        """Stream live XBT/USD price from Kraken WebSocket."""
+    RTDS_PING_INTERVAL = 5  # seconds — RTDS requires PING every 5s
+
+    async def _rtds_ws_loop(self):
+        """Stream live Chainlink BTC/USD price from Polymarket RTDS."""
         import websockets
 
         while self._running:
             try:
-                log.info("Connecting to Kraken WS for XBT/USD")
+                log.info("Connecting to PM RTDS for Chainlink BTC/USD")
                 async with websockets.connect(
-                    KRAKEN_WS_URL, ping_interval=None, close_timeout=5,
+                    PM_RTDS_URL, ping_interval=None, close_timeout=5,
                 ) as ws:
                     await ws.send(json.dumps({
-                        "event": "subscribe",
-                        "pair": ["XBT/USD"],
-                        "subscription": {"name": "ticker"},
+                        "action": "subscribe",
+                        "subscriptions": [{
+                            "topic": "crypto_prices_chainlink",
+                            "type": "*",
+                            "filters": json.dumps({"symbol": "btc/usd"}),
+                        }],
                     }))
-                    log.info("Kraken WS subscribed: XBT/USD ticker")
+                    log.info("RTDS subscribed: chainlink btc/usd")
 
-                    while self._running:
+                    recv_task = asyncio.create_task(self._rtds_recv_loop(ws))
+                    ping_task = asyncio.create_task(self._rtds_ping_loop(ws))
+
+                    done, pending = await asyncio.wait(
+                        [recv_task, ping_task],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    for t in pending:
+                        t.cancel()
+                    for t in done:
                         try:
-                            raw = await asyncio.wait_for(ws.recv(), timeout=30)
-                        except asyncio.TimeoutError:
-                            log.warning("Kraken WS inactivity (30s), reconnecting")
-                            break
-                        except websockets.exceptions.ConnectionClosed:
-                            log.info("Kraken WS closed")
-                            break
-
-                        try:
-                            msg = json.loads(raw)
-                        except (json.JSONDecodeError, TypeError):
-                            continue
-
-                        # Kraken sends heartbeats as dicts, data as arrays
-                        if isinstance(msg, dict):
-                            continue  # skip systemStatus, heartbeat, subscriptionStatus
-
-                        # Data: [channelID, {ticker data}, channelName, pair]
-                        if isinstance(msg, list) and len(msg) >= 2 and isinstance(msg[1], dict):
-                            ticker = msg[1]
-                            # 'c' = last trade [price, lot_volume]
-                            last_trade = ticker.get("c")
-                            if last_trade and isinstance(last_trade, list):
-                                price = _safe_float(last_trade[0])
-                                if price and price != self._kraken_price:
-                                    self._kraken_price = price
-                                    await self._push_update()
+                            t.result()
+                        except Exception:
+                            pass
 
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                log.warning("Kraken WS error, reconnecting in 3s: %s", e)
+                log.warning("RTDS WS error, reconnecting in 3s: %s", e)
             await asyncio.sleep(3)
+
+    async def _rtds_recv_loop(self, ws):
+        """Receive Chainlink BTC/USD price updates from RTDS."""
+        import websockets
+        while self._running:
+            try:
+                # Chainlink updates are infrequent; use long timeout
+                raw = await asyncio.wait_for(ws.recv(), timeout=120)
+            except asyncio.TimeoutError:
+                log.warning("RTDS inactivity (120s), reconnecting")
+                return
+            except websockets.exceptions.ConnectionClosed:
+                log.info("RTDS connection closed")
+                return
+
+            if not raw or raw == "PONG":
+                continue
+
+            try:
+                msg = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            if not isinstance(msg, dict):
+                continue
+
+            payload = msg.get("payload")
+            if not isinstance(payload, dict):
+                continue
+
+            price = None
+            msg_type = msg.get("type", "")
+
+            if msg_type == "subscribe" and "data" in payload:
+                # Historical snapshot on subscribe — take the latest point
+                data = payload["data"]
+                if isinstance(data, list) and data:
+                    last_point = data[-1]
+                    price = last_point.get("value") if isinstance(last_point, dict) else None
+                    log.info("RTDS chainlink snapshot: %d points, latest=$%.2f",
+                             len(data), float(price) if price else 0)
+            elif "value" in payload:
+                # Live update
+                price = payload.get("value")
+
+            if price is None:
+                continue
+
+            try:
+                price = float(price)
+            except (TypeError, ValueError):
+                continue
+
+            if price and price != self._chainlink_price:
+                self._chainlink_price = price
+                await self._push_update()
+
+    async def _rtds_ping_loop(self, ws):
+        """Send PING to RTDS every 5 seconds."""
+        while self._running:
+            try:
+                await ws.send("PING")
+            except Exception:
+                return
+            await asyncio.sleep(self.RTDS_PING_INTERVAL)
 
     # ── Polymarket: dynamic subscription updates ────────────────────────────
 

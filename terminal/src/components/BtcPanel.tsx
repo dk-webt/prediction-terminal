@@ -190,7 +190,7 @@ function BtcPriceGapChart() {
 
   return (
     <div className="btc-chart-container">
-      <div className="btc-chart-title">PRICE GAP: COINBASE - KRAKEN (USD)</div>
+      <div className="btc-chart-title">PRICE GAP: COINBASE - CHAINLINK (USD)</div>
       <div ref={containerRef} />
     </div>
   )
@@ -296,7 +296,7 @@ function BtcArbitrageChart() {
   )
 }
 
-function BtcSpotChart({ field, title, color }: { field: 'coinbase' | 'kraken'; title: string; color: string }) {
+function BtcSpotChart({ field, title, color }: { field: 'coinbase' | 'chainlink'; title: string; color: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const seriesRef = useRef<ISeriesApi<'Line'> | null>(null)
 
@@ -563,7 +563,7 @@ export default function BtcPanel() {
         <BtcPriceGapChart />
         <BtcArbitrageChart />
         <BtcSpotChart field="coinbase" title="KALSHI SOURCE: COINBASE BTC-USD" color="#ffcc44" />
-        <BtcSpotChart field="kraken" title="PM SOURCE: KRAKEN XBT/USD" color="#00cc44" />
+        <BtcSpotChart field="chainlink" title="PM SOURCE: CHAINLINK BTC/USD" color="#00cc44" />
       </div>
 
       <BtcFooter snapshot={btcSnapshot} />

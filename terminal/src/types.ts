@@ -103,7 +103,7 @@ export interface BtcSnapshot {
   kalshi_last_update?: string
   polymarket_last_update?: string
   btc_coinbase?: number
-  btc_kraken?: number
+  btc_chainlink?: number
   btc_price_gap?: number
 }
 
@@ -112,8 +112,8 @@ export interface BtcTimeSeriesPoint {
   priceGap: number | null  // coinbase - kraken
   comboA: number | null    // KS yes_bid + PM down_bid
   comboB: number | null    // KS no_bid + PM up_bid
-  coinbase: number | null  // Coinbase BTC-USD (Kalshi source proxy)
-  kraken: number | null    // Kraken XBT/USD (PM source proxy)
+  coinbase: number | null   // Coinbase BTC-USD (Kalshi/CF Benchmarks source)
+  chainlink: number | null  // Chainlink BTC/USD via PM RTDS (PM settlement source)
 }
 
 export interface OrderConfirmation {

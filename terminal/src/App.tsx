@@ -121,9 +121,9 @@ export default function App() {
         const noBid = typeof ks?.no_bid === 'number' ? ks.no_bid : null
         const downBid = typeof pm?.down_bid === 'number' ? pm.down_bid : null
         const coinbase = typeof snap.btc_coinbase === 'number' ? snap.btc_coinbase : null
-        const kraken = typeof snap.btc_kraken === 'number' ? snap.btc_kraken : null
+        const chainlink = typeof snap.btc_chainlink === 'number' ? snap.btc_chainlink : null
 
-        const priceGap = (coinbase !== null && kraken !== null) ? coinbase - kraken : null
+        const priceGap = (coinbase !== null && chainlink !== null) ? coinbase - chainlink : null
         const comboA = (yesBid !== null && downBid !== null) ? yesBid + downBid : null
         const comboB = (noBid !== null && upBid !== null) ? noBid + upBid : null
 
@@ -133,8 +133,8 @@ export default function App() {
         let time = Math.floor(Date.now() / 1000)
         if (time <= lastTime) time = lastTime + 1
 
-        if (priceGap !== null || comboA !== null || comboB !== null || coinbase !== null || kraken !== null) {
-          state.appendBtcTick({ time, priceGap, comboA, comboB, coinbase, kraken })
+        if (priceGap !== null || comboA !== null || comboB !== null || coinbase !== null || chainlink !== null) {
+          state.appendBtcTick({ time, priceGap, comboA, comboB, coinbase, chainlink })
         }
       } else if (msg.type === 'btc_stopped') {
         useStore.getState().setBtcAutoRefresh(false)
