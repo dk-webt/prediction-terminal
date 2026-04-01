@@ -462,8 +462,6 @@ html, body, #root {
   flex-direction: column;
   gap: 8px;
   padding: 4px;
-  height: 100%;
-  overflow-y: auto;
 }
 
 .btc-header {
