@@ -10,17 +10,17 @@ export default function PositionsPanel({ style }: Props) {
   if (!showPositions) return null
 
   return (
-    <div className="events-panel-dynamic" style={style}>
+    <div className="panel events-panel-dynamic" style={style}>
       <div className="panel-header">
         <span className="panel-title">POSITIONS</span>
         <span className="panel-count">{positions.kalshi.length + positions.polymarket.length}</span>
-        <button
+        <span
           className="panel-close"
           onClick={() => useStore.getState().setShowPositions(false)}
           title="Close positions panel"
         >
           ✕
-        </button>
+        </span>
       </div>
       <div className="panel-body" style={{ overflow: 'auto' }}>
         {positions.loading && (
