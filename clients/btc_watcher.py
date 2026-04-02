@@ -447,7 +447,7 @@ class BtcStreamManager:
         self._pm_ws = None               # active market channel WS reference
 
         # Live BTC spot price feeds
-        self._coinbase_price: float | None = None   # BRTI estimate (CF Benchmarks replication, Kalshi settlement source)
+        self._brti_price: float | None = None   # BRTI estimate (CF Benchmarks replication, Kalshi settlement source)
         self._chainlink_price: float | None = None  # Chainlink BTC/USD via PM RTDS (PM settlement source)
         self._brti_tracker = None  # BRTITracker instance
 
@@ -576,11 +576,11 @@ class BtcStreamManager:
             "rolling": self._rolling,
             "kalshi_last_update": self._ks_last_update,
             "polymarket_last_update": self._pm_last_update,
-            "btc_coinbase": self._coinbase_price,
+            "btc_coinbase": self._brti_price,
             "btc_chainlink": self._chainlink_price,
             "btc_price_gap": (
-                self._coinbase_price - self._chainlink_price
-                if self._coinbase_price is not None and self._chainlink_price is not None
+                self._brti_price - self._chainlink_price
+                if self._brti_price is not None and self._chainlink_price is not None
                 else None
             ),
             "brti_active_exchanges": (
@@ -1044,15 +1044,15 @@ class BtcStreamManager:
         Stream live BRTI estimate from multi-exchange order book tracker.
         Replaces the old single-exchange Coinbase ticker feed with a full
         CF Benchmarks BRTI replication across 6 constituent exchanges.
-        The value is stored in _coinbase_price for backward compatibility
-        with the existing snapshot/frontend pipeline.
+        The value is stored in _brti_price and sent to the frontend
+        as btc_coinbase for backward compatibility with the snapshot pipeline.
         """
         from clients.brti_tracker import BRTITracker
         from config import COINBASE_CDP_API_KEY, COINBASE_CDP_API_SECRET
 
         def on_brti_update(value, ts):
-            if value and value != self._coinbase_price:
-                self._coinbase_price = value
+            if value and value != self._brti_price:
+                self._brti_price = value
                 # Schedule push_update on the event loop (callback is sync)
                 asyncio.get_event_loop().call_soon_threadsafe(
                     asyncio.ensure_future, self._push_update()
