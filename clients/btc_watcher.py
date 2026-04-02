@@ -407,7 +407,7 @@ class BtcStreamManager:
 
     PM_PING_INTERVAL = 8         # seconds between PM WS PING heartbeats
     PM_INACTIVITY_TIMEOUT = 120  # seconds before force-reconnect
-    MIN_PUSH_INTERVAL = 0.5      # seconds — throttle pushes to frontend
+    MIN_PUSH_INTERVAL = 0.1      # seconds — throttle pushes to frontend (10/sec max)
     ROLL_RETRY_INTERVAL = 0.5    # seconds between retries when new contract not ready
     ROLL_MAX_RETRIES = 60        # max retries (~30s max wait for slow platforms)
     STALE_THRESHOLD = 10         # seconds — log warning when platform data goes stale
