@@ -379,6 +379,12 @@ _trade_subscribers: set = set()  # set of /ws/trade WebSocket objects
 # Keyed by both server order_id and client_order_id for lookup flexibility
 _active_orders: dict[str, dict] = {}  # order_id -> order info
 
+# ── Auto Trade Executor (ATE) ────────────────────────────────────────────────
+_ate_enabled = False
+_ate_executing = False  # guard against concurrent execution
+ATE_MIN_PROFIT = 0.06  # minimum profit per contract to trigger
+ATE_ORDER_COUNT = 10    # contracts per leg
+
 
 async def _btc_broadcast(snapshot: dict):
     """Push BTC update to all connected /ws/btc subscribers."""
@@ -392,6 +398,10 @@ async def _btc_broadcast(snapshot: dict):
     for ws in dead:
         _btc_subscribers.discard(ws)
 
+    # Check ATE trigger on every broadcast
+    if _ate_enabled:
+        await _ate_check(snapshot)
+
 
 async def _trade_broadcast(msg_type: str, data: dict):
     """Push fill/order events to all connected /ws/trade subscribers."""
@@ -404,6 +414,129 @@ async def _trade_broadcast(msg_type: str, data: dict):
             dead.append(ws)
     for ws in dead:
         _trade_subscribers.discard(ws)
+
+
+async def _ate_check(snapshot: dict):
+    """Check if an arb opportunity meets ATE threshold and execute if so."""
+    global _ate_enabled, _ate_executing
+
+    if _ate_executing:
+        return
+
+    ks = snapshot.get("kalshi")
+    pm = snapshot.get("polymarket")
+    if not ks or not pm:
+        return
+
+    # Get ask prices (cost to enter each leg)
+    ks_yes_ask = ks.get("yes_ask", 0) or 0
+    ks_no_ask = ks.get("no_ask", 0) or 0
+    pm_down_ask = pm.get("down_ask", 0) or 0
+    pm_up_ask = pm.get("up_ask", 0) or 0
+
+    # Combo A: buy KS YES + buy PM DOWN → settles to $1.00
+    cost_a = ks_yes_ask + pm_down_ask
+    profit_a = 1.0 - cost_a if cost_a > 0 else -999
+
+    # Combo B: buy KS NO + buy PM UP → settles to $1.00
+    cost_b = ks_no_ask + pm_up_ask
+    profit_b = 1.0 - cost_b if cost_b > 0 else -999
+
+    # Pick the better combo if either meets threshold
+    chosen = None
+    if profit_a >= ATE_MIN_PROFIT and profit_a >= profit_b:
+        chosen = "A"
+    elif profit_b >= ATE_MIN_PROFIT:
+        chosen = "B"
+
+    if not chosen:
+        return
+
+    # Trigger! Disable ATE and execute
+    _ate_executing = True
+    _ate_enabled = False
+    profit = profit_a if chosen == "A" else profit_b
+    cost = cost_a if chosen == "A" else cost_b
+
+    if chosen == "A":
+        ks_side, pm_side = "yes", "down"
+        label = "KS YES + PM DOWN"
+    else:
+        ks_side, pm_side = "no", "up"
+        label = "KS NO + PM UP"
+
+    log.warning(
+        "ATE TRIGGERED: %s | cost=%.3f profit=%.3f (%.1f%%) | %d contracts",
+        label, cost, profit, profit * 100, ATE_ORDER_COUNT,
+    )
+
+    # Notify all trade subscribers
+    ate_msg = {
+        "type": "ate_triggered",
+        "combo": label,
+        "cost": round(cost, 4),
+        "profit": round(profit, 4),
+        "count": ATE_ORDER_COUNT,
+    }
+    for ws in list(_trade_subscribers):
+        try:
+            await ws.send_json(ate_msg)
+        except Exception:
+            pass
+
+    # Execute both legs — use the first available trade subscriber for order flow
+    trade_ws = next(iter(_trade_subscribers), None)
+    if not trade_ws:
+        log.error("ATE: no trade WebSocket available for execution")
+        _ate_executing = False
+        return
+
+    try:
+        ks_ticker = ks.get("ticker", "")
+        pm_token_ids = pm.get("token_ids", [])
+
+        # Determine PM token_id for the side
+        # token_ids[0] = up/yes, token_ids[1] = down/no
+        if pm_side == "up":
+            pm_token_id = pm_token_ids[0] if len(pm_token_ids) > 0 else ""
+        else:
+            pm_token_id = pm_token_ids[1] if len(pm_token_ids) > 1 else ""
+
+        # Build and execute both orders as auto-execute (no confirmation)
+        import uuid as _uuid
+
+        # Leg 1: Kalshi
+        ks_order_id = f"ate-{str(_uuid.uuid4())[:6]}"
+        ks_pending = {ks_order_id: {
+            "platform": "kalshi", "action": "buy", "side": ks_side,
+            "count": ATE_ORDER_COUNT, "price": None, "order_type": "market",
+            "ticker": ks_ticker, "token_id": "",
+        }}
+        log.info("ATE: executing leg 1 — BUY %d KS %s MKT", ATE_ORDER_COUNT, ks_side.upper())
+        await _execute_order(trade_ws, ks_order_id, ks_pending)
+
+        # Leg 2: Polymarket
+        pm_order_id = f"ate-{str(_uuid.uuid4())[:6]}"
+        pm_pending = {pm_order_id: {
+            "platform": "polymarket", "action": "buy", "side": pm_side,
+            "count": ATE_ORDER_COUNT, "price": None, "order_type": "market",
+            "ticker": "", "token_id": pm_token_id,
+        }}
+        log.info("ATE: executing leg 2 — BUY %d PM %s MKT", ATE_ORDER_COUNT, pm_side.upper())
+        await _execute_order(trade_ws, pm_order_id, pm_pending)
+
+        log.warning("ATE: both legs executed — auto-disabled")
+    except Exception:
+        log.exception("ATE: execution error")
+    finally:
+        _ate_executing = False
+
+    # Notify completion
+    for ws in list(_trade_subscribers):
+        try:
+            await ws.send_json({"type": "ate_done", "combo": label})
+        except Exception:
+            pass
 
 
 def _track_order(platform: str, order_info: dict, rest_response: dict):
@@ -656,6 +789,26 @@ async def websocket_btc(websocket: WebSocket):
                     # Stop stream if no more subscribers
                     if not _btc_subscribers and _btc_stream is not None:
                         await _btc_stop()
+
+            elif cmd == "btc_ate":
+                global _ate_enabled
+                action = data.get("action", "")
+                if action == "on":
+                    _ate_enabled = True
+                    log.warning("ATE: enabled — monitoring for >= $%.2f profit", ATE_MIN_PROFIT)
+                    await websocket.send_json({
+                        "type": "ate_status", "enabled": True,
+                        "min_profit": ATE_MIN_PROFIT, "count": ATE_ORDER_COUNT,
+                    })
+                elif action == "off":
+                    _ate_enabled = False
+                    log.info("ATE: disabled")
+                    await websocket.send_json({"type": "ate_status", "enabled": False})
+                elif action == "status":
+                    await websocket.send_json({
+                        "type": "ate_status", "enabled": _ate_enabled,
+                        "min_profit": ATE_MIN_PROFIT, "count": ATE_ORDER_COUNT,
+                    })
 
             elif cmd == "btc_debug":
                 action = data.get("action", "get")

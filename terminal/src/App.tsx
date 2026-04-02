@@ -157,6 +157,17 @@ export default function App() {
         state.setProgressMsg(`Debug log downloaded (${logText.split('\n').length} lines)`)
         state.setLoading(false)
         setTimeout(() => useStore.getState().setProgressMsg(''), 3000)
+      } else if (msg.type === 'ate_status') {
+        const state = useStore.getState()
+        const enabled = msg.enabled as boolean
+        if (enabled) {
+          const minProfit = msg.min_profit as number
+          const count = msg.count as number
+          state.setProgressMsg(`ATE: ENABLED — monitoring for >= $${minProfit.toFixed(2)} profit, ${count} contracts per leg`)
+        } else {
+          state.setProgressMsg('ATE: DISABLED')
+        }
+        setTimeout(() => useStore.getState().setProgressMsg(''), 5000)
       }
     }
 
@@ -313,6 +324,17 @@ export default function App() {
             }
           }
         }
+      } else if (msg.type === 'ate_triggered') {
+        const state = useStore.getState()
+        const combo = msg.combo as string
+        const profit = msg.profit as number
+        const count = msg.count as number
+        state.setProgressMsg(`ATE TRIGGERED: ${combo} | profit=$${profit.toFixed(3)}/contract | ${count} contracts — executing...`)
+      } else if (msg.type === 'ate_done') {
+        const state = useStore.getState()
+        const combo = msg.combo as string
+        state.setProgressMsg(`ATE COMPLETE: ${combo} — both legs executed. ATE auto-disabled.`)
+        setTimeout(() => useStore.getState().setProgressMsg(''), 10000)
       }
     }
 
@@ -730,6 +752,27 @@ export default function App() {
           setProgressMsg('Connecting to BTC 15-min live stream...')
           setBtcAutoRefresh(true)
           manager.subscribeBtc()
+          break
+        }
+
+        case 'ATE': {
+          if (!manager?.btcReady) {
+            setErrorMsg('BTC socket not connected. Run BTC first.')
+            return
+          }
+          const ateSub = (parts[1] || '').toUpperCase()
+          if (ateSub === 'ON') {
+            manager.sendBtc({ type: 'btc_ate', action: 'on' })
+            setProgressMsg('ATE: Auto Trade Executor ENABLED — monitoring for arb...')
+          } else if (ateSub === 'OFF') {
+            manager.sendBtc({ type: 'btc_ate', action: 'off' })
+            setProgressMsg('ATE: Auto Trade Executor DISABLED')
+            setTimeout(() => useStore.getState().setProgressMsg(''), 3000)
+          } else {
+            manager.sendBtc({ type: 'btc_ate', action: 'status' })
+            setProgressMsg('ATE: checking status...')
+            setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
+          }
           break
         }
 
