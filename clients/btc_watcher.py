@@ -962,12 +962,17 @@ class BtcStreamManager:
                 return
 
             if raw == "PONG":
+                # PONG confirms the connection is alive
+                self._mark_pm_recv()
                 continue
 
             try:
                 parsed = json.loads(raw)
             except (json.JSONDecodeError, TypeError):
                 continue
+
+            # Any valid WS message means the connection is alive
+            self._mark_pm_recv()
 
             messages = parsed if isinstance(parsed, list) else [parsed]
             updated = False
@@ -1006,11 +1011,7 @@ class BtcStreamManager:
                     log.info("PM market_resolved: id=%s winner=%s",
                              msg.get("id", ""), msg.get("winning_outcome", ""))
 
-                elif event_type == "last_trade_price":
-                    pass  # informational, price already tracked via best_bid_ask
-
             if updated:
-                self._mark_pm_recv()
                 await self._push_update()
 
     def _apply_pm_price(self, asset_id: str, best_bid: float, best_ask: float) -> bool:
