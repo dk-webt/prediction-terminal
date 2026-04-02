@@ -471,7 +471,9 @@ class BRTITracker:
 
         while self._running:
             try:
-                async with websockets.connect(url, ping_interval=20) as ws:
+                async with websockets.connect(
+                    url, ping_interval=20, max_size=2**24,  # 16MB — L2 snapshots can be large
+                ) as ws:
                     jwt_token = self._coinbase_jwt()
                     sub = {
                         "type": "subscribe",
@@ -510,8 +512,14 @@ class BRTITracker:
                             log.exception("Coinbase parse error")
             except asyncio.CancelledError:
                 break
-            except Exception:
-                log.warning("Coinbase WS disconnected, reconnecting in 2s")
+            except websockets.ConnectionClosedError as e:
+                log.warning("Coinbase WS closed: code=%s reason=%s — reconnecting in 2s", e.code, e.reason)
+                await asyncio.sleep(2)
+            except websockets.ConnectionClosedOK as e:
+                log.warning("Coinbase WS closed OK: code=%s reason=%s — reconnecting in 2s", e.code, e.reason)
+                await asyncio.sleep(2)
+            except Exception as e:
+                log.warning("Coinbase WS error: %s — reconnecting in 2s", e)
                 await asyncio.sleep(2)
 
     def _coinbase_jwt(self) -> str | None:
