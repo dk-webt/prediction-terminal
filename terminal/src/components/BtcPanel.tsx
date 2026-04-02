@@ -144,7 +144,7 @@ function BtcPriceGapChart() {
       color: '#ffb000',
       lineWidth: 2,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-      title: 'Gap ($)',
+      title: '',
     })
     chartRef.current = chart
     seriesRef.current = series
@@ -190,7 +190,7 @@ function BtcPriceGapChart() {
 
   return (
     <div className="btc-chart-container">
-      <div className="btc-chart-title">PRICE GAP: COINBASE - CHAINLINK (USD)</div>
+      <div className="btc-chart-title">PRICE GAP: BRTI - CHAINLINK (USD)</div>
       <div ref={containerRef} />
     </div>
   )
@@ -214,13 +214,13 @@ function BtcArbitrageChart() {
       color: '#00cc44',
       lineWidth: 2,
       priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
-      title: 'KS Yes + PM Down',
+      title: '',
     })
     const seriesB = chart.addSeries(LineSeries, {
       color: '#ffb000',
       lineWidth: 2,
       priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
-      title: 'KS No + PM Up',
+      title: '',
     })
 
     // Break-even reference line at 1.0
