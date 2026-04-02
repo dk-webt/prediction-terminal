@@ -325,3 +325,107 @@ Tasks:
 
 Files: api_server.py, clients/btc_watcher.py, terminal/src/App.tsx,
        terminal/src/store.ts, terminal/src/types.ts
+
+
+================================================================================
+*** IMPORTANT: ATE Multi-Leg Execution — Legging Risk & Unwind ***
+================================================================================
+
+INCIDENT: Second ATE execution bought 10 KS YES (3 filled, 7 resting)
+but PM DOWN leg was rejected (FOK — insufficient liquidity at cap price).
+Result: unhedged directional position, not an arb.
+
+Current ATE flow (broken):
+  1. Execute KS leg → wait for response
+  2. Execute PM leg → wait for response
+  3. Log "both legs executed" regardless of success ← BUG
+
+The log message is wrong AND the execution is sequential, meaning the
+second leg sees a different market than when the arb was detected.
+
+─── How Institutions Handle This ───
+
+1. PARALLEL EXECUTION (minimum viable fix)
+   - Send both legs simultaneously via asyncio.gather()
+   - If both succeed → done
+   - If one fails → immediately unwind the other
+   - Latency between detection and execution is halved
+
+2. ATOMIC EXECUTION (ideal but not possible cross-exchange)
+   - DeFi can do this on-chain (atomic transactions)
+   - Cross-exchange cannot — legging risk is inherent
+   - Must accept and manage the risk
+
+3. CONTINGENT ORDERS / UNWIND STRATEGY
+   - If leg 2 fails, immediately sell leg 1 at market
+   - Accept a small loss on the unwind (better than unhedged exposure)
+   - Max loss = spread on the successful leg + fees
+   - Log the unwind as a "legging failure" for review
+
+4. PRE-EXECUTION LIQUIDITY CHECK
+   - Before triggering, verify BOTH orderbooks have enough depth
+   - Check not just best ask but cumulative volume at the price
+   - e.g. "are there 10+ contracts available within 2 cents of ask?"
+   - Reject the trade if either side lacks depth
+
+5. ADAPTIVE SIZING
+   - Instead of fixed 10 contracts, size to the minimum available
+     depth across both platforms
+   - min(KS depth at ask, PM depth at ask) = max safe size
+   - Prevents FOK rejections from insufficient liquidity
+
+─── Implementation Plan ───
+
+Phase 1: Fix bugs (immediate)
+  [ ] Fix "both legs executed" log — check actual success of each leg
+  [ ] Report leg-by-leg results to frontend (ate_result with per-leg status)
+
+Phase 2: Parallel execution + unwind
+  [ ] Execute both legs via asyncio.gather() (parallel, not sequential)
+  [ ] If one leg fails:
+      - Immediately sell/unwind the successful leg at market
+      - Log as "ATE LEGGING FAILURE — unwinding leg 1"
+      - Report to frontend with loss amount
+  [ ] If both fail → no action needed, just report
+
+Phase 3: Pre-execution liquidity check
+  [ ] Before triggering, check orderbook depth on BOTH platforms
+  [ ] Require N contracts available within 2c of best ask on each side
+  [ ] Use live orderbook data from btc_watcher (_kalshi_data, _pm_data)
+  [ ] Need orderbook depth arrays, not just top-of-book bid/ask
+  [ ] Reject trade if either side lacks sufficient depth
+
+Phase 4: Adaptive sizing
+  [ ] Calculate max safe size = min(KS depth, PM depth) at trigger price
+  [ ] Cap ATE_ORDER_COUNT to this value
+  [ ] Minimum viable size: 1 contract (below this, skip)
+
+─── Liquidity Check Detail ───
+
+Current problem: ATE uses best ask prices (top of book) but doesn't
+verify there's enough volume at those prices. The arb looks profitable
+at the best ask but there may only be 2 contracts there.
+
+What we need: for each platform, walk the orderbook and sum volume
+up to our target price cap. Example:
+
+  KS YES orderbook asks:
+    $0.16 x 3 contracts
+    $0.17 x 2 contracts
+    $0.18 x 5 contracts
+  → At cap $0.18: cumulative = 10 contracts ✓
+
+  PM DOWN orderbook asks:
+    $0.71 x 4 contracts
+    $0.72 x 3 contracts
+  → At cap $0.73: cumulative = 7 contracts ✗ (need 10)
+
+  Decision: reduce size to 7, or skip entirely.
+
+Currently btc_watcher only exposes top-of-book (yes_ask, no_ask, etc.)
+not the full depth. Need to either:
+  a) Expose orderbook depth arrays in the snapshot, or
+  b) Query the REST orderbook API before executing
+
+Files: api_server.py (ATE logic), clients/executor.py,
+       clients/btc_watcher.py (orderbook depth)
