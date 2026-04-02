@@ -583,6 +583,10 @@ class BtcStreamManager:
                 if self._coinbase_price is not None and self._chainlink_price is not None
                 else None
             ),
+            "brti_active_exchanges": (
+                self._brti_tracker.get_status()["active_exchanges"]
+                if self._brti_tracker else None
+            ),
         }
         try:
             await self._on_update(snapshot)

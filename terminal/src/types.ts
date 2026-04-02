@@ -105,6 +105,7 @@ export interface BtcSnapshot {
   btc_coinbase?: number
   btc_chainlink?: number
   btc_price_gap?: number
+  brti_active_exchanges?: number
 }
 
 export interface BtcTimeSeriesPoint {

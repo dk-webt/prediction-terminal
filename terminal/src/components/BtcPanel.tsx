@@ -430,7 +430,7 @@ export default function BtcPanel() {
               </div>
               <div className="btc-field">
                 <span className="btc-label">Source</span>
-                <span className="btc-value btc-dim">CF Benchmarks BRTI (real-time estimate)</span>
+                <span className="btc-value btc-dim">CF Benchmarks BRTI ({btcSnapshot.brti_active_exchanges ?? '?'} of 6 exchanges)</span>
               </div>
               <div className="btc-divider" />
               <table className="btc-price-table">
@@ -562,7 +562,7 @@ export default function BtcPanel() {
       <div className="btc-charts-section">
         <BtcPriceGapChart />
         <BtcArbitrageChart />
-        <BtcSpotChart field="coinbase" title="KALSHI SOURCE: BRTI ESTIMATE (6 EXCHANGES)" color="#ffcc44" />
+        <BtcSpotChart field="coinbase" title={`KALSHI SOURCE: BRTI ESTIMATE (${btcSnapshot.brti_active_exchanges ?? '?'} of 6)`} color="#ffcc44" />
         <BtcSpotChart field="chainlink" title="PM SOURCE: CHAINLINK BTC/USD" color="#00cc44" />
       </div>
 
