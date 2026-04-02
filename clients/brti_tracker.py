@@ -44,7 +44,7 @@ SIZE_CAP_SIGMA_MULT = 5       # C_T = winsorized_mean + 5σ
 
 # ── Exchange Definitions ─────────────────────────────────────────────────────
 
-EXCHANGES = ["coinbase", "kraken", "bitstamp", "gemini", "crypto_com"]
+EXCHANGES = ["coinbase", "kraken", "bitstamp", "gemini", "crypto_com", "bullish"]
 
 
 @dataclass
@@ -123,9 +123,10 @@ class BRTITracker:
             asyncio.create_task(self._feed_bitstamp(), name="feed_bitstamp"),
             asyncio.create_task(self._feed_gemini(), name="feed_gemini"),
             asyncio.create_task(self._feed_crypto_com(), name="feed_crypto_com"),
+            asyncio.create_task(self._feed_bullish(), name="feed_bullish"),
             asyncio.create_task(self._compute_loop(), name="brti_compute"),
         ]
-        log.info("BRTI tracker started — 5 exchange feeds + compute loop")
+        log.info("BRTI tracker started — 6 exchange feeds + compute loop")
 
     async def stop(self):
         """Stop all feeds and computation."""
@@ -960,6 +961,91 @@ class BRTITracker:
 
         book.last_update = time.time()
 
+    # ── Exchange Feed: Bullish ───────────────────────────────────────────────
+
+    async def _feed_bullish(self):
+        """
+        Bullish Exchange public WebSocket L2 order book feed.
+        wss://api.exchange.bullish.com/trading-api/v1/market-data/orderbook
+        JSON-RPC 2.0 protocol, public, no auth required.
+        """
+        url = "wss://api.exchange.bullish.com/trading-api/v1/market-data/orderbook"
+
+        while self._running:
+            try:
+                async with websockets.connect(url, ping_interval=20) as ws:
+                    # Subscribe to L2 order book for BTCUSD
+                    sub = {
+                        "jsonrpc": "2.0",
+                        "type": "command",
+                        "method": "subscribe",
+                        "params": {
+                            "topic": "l2Orderbook",
+                            "symbol": "BTCUSD",
+                        },
+                        "id": str(int(time.time() * 1000)),
+                    }
+                    await ws.send(json.dumps(sub))
+                    log.info("Bullish L2 connected")
+
+                    async for raw in ws:
+                        if not self._running:
+                            break
+                        try:
+                            msg = json.loads(raw)
+                            self._handle_bullish_msg(msg)
+                        except Exception:
+                            log.exception("Bullish parse error")
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                log.warning("Bullish WS disconnected, reconnecting in 2s")
+                await asyncio.sleep(2)
+
+    def _handle_bullish_msg(self, msg: dict):
+        """
+        Process Bullish L2 order book messages.
+        L2 snapshots contain bids/asks as flat arrays: [price, qty, price, qty, ...]
+        """
+        # Skip heartbeats, subscription confirmations, and errors
+        if msg.get("method") == "heartbeat":
+            return
+        if "result" in msg and "topic" not in msg.get("result", {}):
+            return
+
+        # L2 data comes in params or result depending on message type
+        data = msg.get("params") or msg.get("result")
+        if not data:
+            return
+
+        topic = data.get("topic", "")
+        if "l2Orderbook" not in topic:
+            return
+
+        book = self.books["bullish"]
+
+        # Bullish L2 sends bids/asks as flat arrays: [price, qty, price, qty, ...]
+        bids_raw = data.get("bids", [])
+        asks_raw = data.get("asks", [])
+
+        if bids_raw:
+            book.bids.clear()
+            for i in range(0, len(bids_raw) - 1, 2):
+                price = float(bids_raw[i])
+                size = float(bids_raw[i + 1])
+                if price > 0 and size > 0:
+                    book.bids[price] = size
+
+        if asks_raw:
+            book.asks.clear()
+            for i in range(0, len(asks_raw) - 1, 2):
+                price = float(asks_raw[i])
+                size = float(asks_raw[i + 1])
+                if price > 0 and size > 0:
+                    book.asks[price] = size
+
+        book.last_update = time.time()
+
 
 # ── Standalone runner ────────────────────────────────────────────────────────
 
@@ -983,9 +1069,9 @@ async def _main():
         status = tracker.get_status()
         active = status["active_exchanges"]
         if settlement:
-            print(f"[{t}] BRTI: ${value:,.2f}  |  60s avg: ${settlement:,.2f}  ({active}/5 exchanges)")
+            print(f"[{t}] BRTI: ${value:,.2f}  |  60s avg: ${settlement:,.2f}  ({active}/6 exchanges)")
         else:
-            print(f"[{t}] BRTI: ${value:,.2f}  |  60s avg: collecting ({n_samples}/60)  ({active}/5 exchanges)")
+            print(f"[{t}] BRTI: ${value:,.2f}  |  60s avg: collecting ({n_samples}/60)  ({active}/6 exchanges)")
 
     tracker = BRTITracker(
         coinbase_api_key=COINBASE_CDP_API_KEY,
