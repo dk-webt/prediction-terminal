@@ -500,6 +500,7 @@ class BtcStreamManager:
             log.warning("Kalshi RSA keys not configured — no Kalshi streaming available")
 
         self._tasks.append(asyncio.create_task(self._pm_ws_loop()))
+        self._tasks.append(asyncio.create_task(self._pm_ob_refresh_loop()))
         self._tasks.append(asyncio.create_task(self._coinbase_ws_loop()))
         self._tasks.append(asyncio.create_task(self._rtds_ws_loop()))
         self._tasks.append(asyncio.create_task(self._window_roll_loop()))
@@ -1015,6 +1016,7 @@ class BtcStreamManager:
     def _apply_pm_price(self, asset_id: str, best_bid: float, best_ask: float) -> bool:
         """Apply a PM price update. Returns True if data actually changed.
         Each token (up/down) is tracked independently from its own orderbook.
+        Uses 'is not None' checks — 0.0 is a valid price (empty book side).
         """
         if not self._pm_data or self._pm_data.get("error"):
             return False
@@ -1024,22 +1026,74 @@ class BtcStreamManager:
 
         if len(tokens) >= 1 and asset_id == tokens[0]:
             # Direct update from UP token's orderbook
-            if best_bid and best_bid != self._pm_data.get("up_bid"):
+            if best_bid is not None and best_bid != self._pm_data.get("up_bid"):
                 self._pm_data["up_bid"] = best_bid
                 changed = True
-            if best_ask and best_ask != self._pm_data.get("up_ask"):
+            if best_ask is not None and best_ask != self._pm_data.get("up_ask"):
                 self._pm_data["up_ask"] = best_ask
                 changed = True
         elif len(tokens) >= 2 and asset_id == tokens[1]:
             # Direct update from DOWN token's orderbook
-            if best_bid and best_bid != self._pm_data.get("down_bid"):
+            if best_bid is not None and best_bid != self._pm_data.get("down_bid"):
                 self._pm_data["down_bid"] = best_bid
                 changed = True
-            if best_ask and best_ask != self._pm_data.get("down_ask"):
+            if best_ask is not None and best_ask != self._pm_data.get("down_ask"):
                 self._pm_data["down_ask"] = best_ask
                 changed = True
 
         return changed
+
+    PM_OB_REFRESH_INTERVAL = 5  # seconds — periodic REST orderbook refresh
+
+    async def _pm_ob_refresh_loop(self):
+        """Periodically fetch PM orderbook via REST to correct WS state drift.
+        The WS price_change events can accumulate errors over time (missed messages,
+        stale best_bid/best_ask in deltas). This loop resets the state every few seconds.
+        """
+        while self._running:
+            try:
+                await asyncio.sleep(self.PM_OB_REFRESH_INTERVAL)
+
+                if not self._pm_token_ids or not self._pm_data:
+                    continue
+                if self._rolling:
+                    continue
+
+                tokens = list(self._pm_token_ids)
+                # Fetch both token orderbooks in parallel
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    futures = []
+                    for token in tokens[:2]:
+                        futures.append(pool.submit(_fetch_ob, token))
+                    results = [f.result() for f in futures]
+
+                changed = False
+                if len(results) >= 1 and len(tokens) >= 1:
+                    bid, ask = results[0]
+                    if bid > 0 and bid != self._pm_data.get("up_bid"):
+                        self._pm_data["up_bid"] = bid
+                        changed = True
+                    if ask > 0 and ask != self._pm_data.get("up_ask"):
+                        self._pm_data["up_ask"] = ask
+                        changed = True
+                if len(results) >= 2 and len(tokens) >= 2:
+                    bid, ask = results[1]
+                    if bid > 0 and bid != self._pm_data.get("down_bid"):
+                        self._pm_data["down_bid"] = bid
+                        changed = True
+                    if ask > 0 and ask != self._pm_data.get("down_ask"):
+                        self._pm_data["down_ask"] = ask
+                        changed = True
+
+                if changed:
+                    self._mark_pm_recv()
+                    await self._push_update()
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.debug("PM OB refresh error: %s", e)
 
     async def _pm_ping_loop(self, ws):
         """Send application-level PING to PM WS every 8 seconds."""
