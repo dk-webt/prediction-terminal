@@ -335,11 +335,13 @@ async def place_btc_order(body: dict):
 
 @app.get("/btc/positions")
 async def get_btc_positions():
-    """Fetch positions from both platforms."""
+    """Fetch positions from both platforms in parallel."""
     from clients.executor import get_kalshi_positions, get_polymarket_positions
     try:
-        ks = await asyncio.to_thread(get_kalshi_positions)
-        pm = await asyncio.to_thread(get_polymarket_positions)
+        ks, pm = await asyncio.gather(
+            asyncio.to_thread(get_kalshi_positions),
+            asyncio.to_thread(get_polymarket_positions),
+        )
         return {"kalshi": ks, "polymarket": pm}
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
