@@ -332,14 +332,21 @@ def fetch_polymarket_btc_15m() -> dict | None:
         if "strike" in futures:
             strike = futures["strike"].result()
 
+    # Fallback: use Gamma API bestBid/bestAsk if CLOB orderbook was empty
     if up_ask == 0.0:
         up_ask = _safe_float(market.get("bestAsk"))
     if up_bid == 0.0:
         up_bid = _safe_float(market.get("bestBid"))
-    if down_ask == 0.0 and up_bid > 0:
-        down_ask = round(1.0 - up_bid, 4)
-    if down_bid == 0.0 and up_ask > 0:
-        down_bid = round(1.0 - up_ask, 4)
+    # Only derive down from up if the down token's own orderbook was completely empty
+    # (both bid and ask are 0). This means the down token has no liquidity at all.
+    if down_ask == 0.0 and down_bid == 0.0:
+        if up_bid > 0:
+            down_ask = round(1.0 - up_bid, 4)
+        if up_ask > 0:
+            down_bid = round(1.0 - up_ask, 4)
+        if down_ask > 0 or down_bid > 0:
+            log.warning("PM INIT: down token orderbook empty, derived from up: down_bid=%.4f down_ask=%.4f",
+                        down_bid, down_ask)
 
     return {
         "platform": "polymarket",
@@ -1006,7 +1013,9 @@ class BtcStreamManager:
                 await self._push_update()
 
     def _apply_pm_price(self, asset_id: str, best_bid: float, best_ask: float) -> bool:
-        """Apply a PM price update. Returns True if data actually changed."""
+        """Apply a PM price update. Returns True if data actually changed.
+        Each token (up/down) is tracked independently from its own orderbook.
+        """
         if not self._pm_data or self._pm_data.get("error"):
             return False
 
@@ -1014,6 +1023,7 @@ class BtcStreamManager:
         changed = False
 
         if len(tokens) >= 1 and asset_id == tokens[0]:
+            # Direct update from UP token's orderbook
             if best_bid and best_bid != self._pm_data.get("up_bid"):
                 self._pm_data["up_bid"] = best_bid
                 changed = True
@@ -1021,6 +1031,7 @@ class BtcStreamManager:
                 self._pm_data["up_ask"] = best_ask
                 changed = True
         elif len(tokens) >= 2 and asset_id == tokens[1]:
+            # Direct update from DOWN token's orderbook
             if best_bid and best_bid != self._pm_data.get("down_bid"):
                 self._pm_data["down_bid"] = best_bid
                 changed = True
