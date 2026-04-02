@@ -211,13 +211,13 @@ function BtcArbitrageChart() {
     })
 
     const seriesA = chart.addSeries(LineSeries, {
-      color: '#00cc44',
+      color: '#5599dd',
       lineWidth: 2,
       priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
       title: '',
     })
     const seriesB = chart.addSeries(LineSeries, {
-      color: '#ffb000',
+      color: '#ddaa44',
       lineWidth: 2,
       priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
       title: '',
@@ -286,9 +286,9 @@ function BtcArbitrageChart() {
   return (
     <div className="btc-chart-container">
       <div className="btc-chart-title">
-        ARB COMBOS: <span style={{ color: '#00cc44' }}>KS YES + PM DOWN</span>
+        ARB COMBOS: <span style={{ color: '#5599dd' }}>KS YES + PM DOWN</span>
         {' / '}
-        <span style={{ color: '#ffb000' }}>KS NO + PM UP</span>
+        <span style={{ color: '#ddaa44' }}>KS NO + PM UP</span>
         {' (1.0 = break-even)'}
       </div>
       <div ref={containerRef} />
