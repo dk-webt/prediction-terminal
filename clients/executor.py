@@ -183,7 +183,7 @@ def get_kalshi_positions() -> dict:
         resp = requests.get(
             f"{KALSHI_BASE}/portfolio/positions",
             headers=headers,
-            params={"series_ticker": "KXBTC15M", "limit": 20},
+            params={"series_ticker": "KXBTC15M", "limit": 100, "settlement_status": "unsettled"},
             timeout=10,
         )
         data = resp.json()
@@ -418,15 +418,22 @@ def set_pm_allowances() -> dict:
 
 
 def get_polymarket_positions() -> dict:
-    """Fetch Polymarket open positions."""
-    client = _get_pm_client()
-    if not client:
-        return {"success": False, "error": "Polymarket keys not configured"}
+    """Fetch Polymarket open positions from the Data API."""
+    if not POLYMARKET_WALLET_ADDRESS:
+        return {"success": False, "error": "POLYMARKET_WALLET_ADDRESS not configured"}
 
     try:
-        # The CLOB client may not have a direct positions endpoint;
-        # use the Polygon subgraph or balance check
-        # For now, return empty with success
-        return {"success": True, "data": []}
+        resp = requests.get(
+            "https://data-api.polymarket.com/positions",
+            params={"user": POLYMARKET_WALLET_ADDRESS, "sizeThreshold": 0},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            positions = resp.json()
+            # Filter to non-zero positions
+            active = [p for p in positions if float(p.get("size", 0)) > 0]
+            return {"success": True, "data": active}
+        else:
+            return {"success": False, "error": f"HTTP {resp.status_code}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
