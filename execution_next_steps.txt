@@ -136,10 +136,48 @@ Tasks:
       - Order may rest indefinitely
       - WS user channel is the only way to know when it fills
       - Show "resting" status in UI until fill/cancel
+      - CRITICAL: requires heartbeat (see Step 5B)
 
   [ ] Handle order expiry:
       - KS: orders may have expiration_time
       - PM: GTC orders persist until filled or canceled
+
+
+================================================================================
+STEP 5B: Polymarket REST Heartbeat (CRITICAL for GTC/GTD orders)
+================================================================================
+
+From Polymarket docs (trading/orders/overview):
+  "If a valid heartbeat is not received within 10 seconds (with up to a
+   5-second buffer), all of your open orders will be cancelled."
+
+This is a REST API heartbeat, NOT the WebSocket PING. It only matters
+when we have resting orders (GTC or GTD). FOK market orders fill or
+fail instantly so they don't need heartbeat.
+
+If we ever place GTC limit orders on Polymarket, we MUST implement this
+or all resting orders will be auto-canceled after ~15 seconds.
+
+Tasks:
+  [ ] Investigate heartbeat endpoint:
+      - Likely a REST POST with a heartbeat ID returned by the server
+      - Each heartbeat response includes the next heartbeat ID to send
+      - Must send every 5 seconds (10s timeout with 5s buffer)
+
+  [ ] Implement heartbeat loop in api_server or btc_watcher:
+      - Start when a PM GTC/GTD order is placed
+      - Stop when no resting PM orders remain
+      - If heartbeat fails, warn user that orders may be canceled
+
+  [ ] Alternative: use FOK/FAK for all PM orders (no heartbeat needed)
+      - FOK: fill completely or cancel entirely
+      - FAK: fill what's available, cancel remainder
+      - Simpler but no resting order support
+
+Files: clients/executor.py, api_server.py
+
+Note: For now, we only use FOK market orders on PM, so heartbeat is not
+yet required. This becomes critical when we add GTC limit order support.
 
   [ ] Reconnection resilience:
       - If KS WS reconnects, re-subscribe to fill + user_orders
@@ -234,10 +272,56 @@ Priority: Step 1 first (no new connections, biggest bang for buck)
   Step 3: Wire to frontend (KS)     — DONE
   Step 4: Frontend display (KS)     — DONE
   Step 5: Edge cases                — partial fills DONE, reconnection TODO
+  Step 5B: PM REST heartbeat        — CRITICAL before GTC limit orders
   Step 6: Kalshi FIX API            — future (requires institutional access)
 
 Current state:
   - Kalshi fills: server logs + frontend status bar + order tracking ✓
   - Kalshi order lifecycle: submitted → resting → partial → filled/canceled ✓
   - Partial fill accumulation across multiple fill events ✓
+  - Kalshi market order safety cap from live data ✓
   - PM fill tracking: pending Step 2 (PM user channel WS)
+  - PM heartbeat: not yet needed (FOK only), required before GTC support
+
+
+================================================================================
+*** IMPORTANT: Refactor to Independent Data Streams ***
+================================================================================
+
+Current architecture bottleneck: ALL data sources (BRTI, Kalshi orderbook,
+PM orderbook, Chainlink) funnel through a single _push_update() that
+rebuilds one monolithic snapshot and sends it over one WebSocket message.
+
+Problems:
+  1. All-or-nothing push — a tiny Kalshi bid change rebuilds the entire
+     snapshot including BRTI, PM data, Chainlink, staleness checks
+  2. Sources block each other — 0.1s throttle means a BRTI update can
+     be silently dropped if a Kalshi orderbook delta just fired
+  3. No priority — a fill notification (critical) is throttled the same
+     as a routine Chainlink price tick
+  4. Redundant data — every push sends ~2KB of unchanged Kalshi/PM data
+     even if only the BRTI price changed
+
+Target architecture (Bloomberg-style independent streams):
+  BRTI price ──→ {"type": "brti",      "price": 68142.35}      ──→ frontend
+  KS orderbook ──→ {"type": "ks_book",  "yes_bid": 0.52, ...}  ──→ frontend
+  PM orderbook ──→ {"type": "pm_book",  "up_ask": 0.49, ...}   ──→ frontend
+  Chainlink ──→ {"type": "chainlink",   "price": 68140.20}     ──→ frontend
+  Fills/orders ──→ {"type": "ks_fill",  ...}                    ──→ frontend (no throttle)
+
+Benefits:
+  - No source can starve another
+  - Minimal data over the wire (only changed fields)
+  - Each stream has its own update rate
+  - Critical events (fills, order confirms) bypass price throttle
+  - Frontend merges into Zustand store independently
+
+Tasks:
+  [ ] Split btc_update into granular message types on /ws/btc
+  [ ] Update frontend onBtcMessage to handle multiple message types
+  [ ] Remove monolithic snapshot rebuild — each source pushes its own delta
+  [ ] Critical events (fills, order status) bypass throttle entirely
+  [ ] Each data source manages its own push interval
+
+Files: api_server.py, clients/btc_watcher.py, terminal/src/App.tsx,
+       terminal/src/store.ts, terminal/src/types.ts
