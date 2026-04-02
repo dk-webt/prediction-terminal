@@ -436,6 +436,17 @@ async def _ate_check(snapshot: dict):
     if snapshot.get("rolling"):
         return
 
+    # Skip if less than 59 seconds remaining — too close to settlement
+    close_time = ks.get("close_time", "")
+    if close_time:
+        try:
+            from datetime import datetime, timezone
+            remaining = (datetime.fromisoformat(close_time) - datetime.now(timezone.utc)).total_seconds()
+            if remaining < 59:
+                return
+        except (ValueError, TypeError):
+            pass
+
     # Get ask prices (cost to enter each leg)
     ks_yes_ask = ks.get("yes_ask", 0) or 0
     ks_no_ask = ks.get("no_ask", 0) or 0
