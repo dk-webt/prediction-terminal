@@ -1053,10 +1053,7 @@ class BtcStreamManager:
         def on_brti_update(value, ts):
             if value and value != self._brti_price:
                 self._brti_price = value
-                # Schedule push_update on the event loop (callback is sync)
-                asyncio.get_event_loop().call_soon_threadsafe(
-                    asyncio.ensure_future, self._push_update()
-                )
+                asyncio.ensure_future(self._push_update())
 
         self._brti_tracker = BRTITracker(
             coinbase_api_key=COINBASE_CDP_API_KEY,
