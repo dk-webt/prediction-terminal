@@ -153,6 +153,25 @@ export interface FillEvent {
   timestamp: number
 }
 
+export interface PositionData {
+  platform: 'kalshi' | 'polymarket'
+  ticker: string
+  title: string
+  side: string
+  size: number
+  avgPrice: number
+  currentValue: number | null
+  pnl: number | null
+}
+
+export interface PositionsState {
+  kalshi: PositionData[]
+  polymarket: PositionData[]
+  loading: boolean
+  error: string | null
+  lastFetched: number
+}
+
 // Extend Window for Electron bridge
 declare global {
   interface Window {

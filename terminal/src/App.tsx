@@ -574,14 +574,15 @@ export default function App() {
         case 'HIDE':
         case 'TOGGLE': {
           const target = (parts[1] || '').toUpperCase()
-          const panelMap: Record<string, 'pm' | 'ks' | 'detail'> = {
+          const panelMap: Record<string, 'pm' | 'ks' | 'detail' | 'positions'> = {
             PM: 'pm', POLY: 'pm', POLYMARKET: 'pm',
             KS: 'ks', KALSHI: 'ks',
             DETAIL: 'detail', DET: 'detail',
+            POS: 'positions', POSITIONS: 'positions',
           }
           const panel = panelMap[target]
           if (!panel) {
-            setErrorMsg(`Usage: ${cmd} PM|KS|DETAIL`)
+            setErrorMsg(`Usage: ${cmd} PM|KS|DETAIL|POS`)
             setTimeout(() => useStore.getState().setErrorMsg(''), 3000)
             break
           }
@@ -591,6 +592,7 @@ export default function App() {
             const show = cmd === 'SHOW'
             if (panel === 'pm') useStore.getState().setShowPm(show)
             else if (panel === 'ks') useStore.getState().setShowKs(show)
+            else if (panel === 'positions') useStore.getState().setShowPositions(show)
             else useStore.getState().setShowDetail(show)
           }
           break
@@ -676,25 +678,55 @@ export default function App() {
         }
 
         case 'POS': {
-          setLoading(true)
+          const state = useStore.getState()
+          state.setPositions({ loading: true, error: null })
+          state.setShowPositions(true)
           setProgressMsg('Fetching positions...')
           fetch(`${API}/btc/positions`)
             .then((r) => r.json())
             .then((data) => {
-              setLoading(false)
-              const ksPos = data.kalshi?.data || []
-              const pmPos = data.polymarket?.data || []
+              const ksRaw = data.kalshi?.data || []
+              const pmRaw = data.polymarket?.data || []
               const ksErr = data.kalshi?.error
               const pmErr = data.polymarket?.error
-              let msg = ''
-              if (ksErr) msg += `KS: ${ksErr} `
-              else msg += `KS: ${ksPos.length} position(s) `
-              if (pmErr) msg += `| PM: ${pmErr}`
-              else msg += `| PM: ${pmPos.length} position(s)`
-              setProgressMsg(msg)
-              setTimeout(() => useStore.getState().setProgressMsg(''), 5000)
+
+              const kalshi = ksRaw.map((p: Record<string, unknown>) => ({
+                platform: 'kalshi' as const,
+                ticker: (p.ticker || '') as string,
+                title: (p.event_title || p.ticker || '') as string,
+                side: ((p.market_position || '') as string).toLowerCase() || 'yes',
+                size: Number(p.total_traded) || Number(p.position) || 0,
+                avgPrice: Number(p.resting_orders_count) > 0 ? 0 : 0,
+                currentValue: null,
+                pnl: Number(p.realized_pnl) || null,
+              })).filter((p: { size: number }) => p.size > 0)
+
+              const polymarket = pmRaw.map((p: Record<string, unknown>) => ({
+                platform: 'polymarket' as const,
+                ticker: (p.asset || p.market || '') as string,
+                title: (p.title || p.market_slug || p.asset || '') as string,
+                side: (p.outcome || 'yes') as string,
+                size: Number(p.size) || 0,
+                avgPrice: Number(p.avgPrice) || 0,
+                currentValue: Number(p.currentValue) || null,
+                pnl: Number(p.cashPnl) || null,
+              })).filter((p: { size: number }) => p.size > 0)
+
+              const error = [ksErr, pmErr].filter(Boolean).join(' | ') || null
+
+              useStore.getState().setPositions({
+                kalshi, polymarket, loading: false, error,
+                lastFetched: Date.now(),
+              })
+
+              const total = kalshi.length + polymarket.length
+              setProgressMsg(`${total} position(s) loaded`)
+              setTimeout(() => useStore.getState().setProgressMsg(''), 3000)
             })
-            .catch((e) => { setLoading(false); setErrorMsg(String(e)) })
+            .catch((e) => {
+              useStore.getState().setPositions({ loading: false, error: String(e) })
+              setErrorMsg(String(e))
+            })
           break
         }
 

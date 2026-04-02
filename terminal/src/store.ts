@@ -9,6 +9,7 @@ import type {
   OrderConfirmation,
   TrackedOrder,
   FillEvent,
+  PositionsState,
 } from './types'
 
 export type View = 'IDLE' | 'PM' | 'KS' | 'ARB' | 'CMP' | 'HELP' | 'CACHE' | 'CATS' | 'HIST' | 'BTC'
@@ -46,6 +47,8 @@ interface TerminalState {
   showPm: boolean
   showKs: boolean
   showDetail: boolean
+  showPositions: boolean
+  positions: PositionsState
 
   // UI state
   activeView: View
@@ -88,7 +91,9 @@ interface TerminalState {
   setShowPm: (v: boolean) => void
   setShowKs: (v: boolean) => void
   setShowDetail: (v: boolean) => void
-  togglePanel: (panel: 'pm' | 'ks' | 'detail') => void
+  setShowPositions: (v: boolean) => void
+  setPositions: (v: Partial<PositionsState>) => void
+  togglePanel: (panel: 'pm' | 'ks' | 'detail' | 'positions') => void
   setActiveView: (v: View) => void
   setActiveCategory: (v: string | null) => void
   setSelectedIndex: (v: number | null) => void
@@ -132,6 +137,8 @@ export const useStore = create<TerminalState>((set) => ({
   showPm: true,
   showKs: true,
   showDetail: true,
+  showPositions: false,
+  positions: { kalshi: [], polymarket: [], loading: false, error: null, lastFetched: 0 },
   activeView: 'IDLE',
   activeCategory: null,
   selectedIndex: null,
@@ -173,9 +180,12 @@ export const useStore = create<TerminalState>((set) => ({
   setShowPm: (showPm) => set({ showPm }),
   setShowKs: (showKs) => set({ showKs }),
   setShowDetail: (showDetail) => set({ showDetail }),
+  setShowPositions: (showPositions) => set({ showPositions }),
+  setPositions: (v) => set((s) => ({ positions: { ...s.positions, ...v } })),
   togglePanel: (panel) => set((s) => {
     if (panel === 'pm') return { showPm: !s.showPm }
     if (panel === 'ks') return { showKs: !s.showKs }
+    if (panel === 'positions') return { showPositions: !s.showPositions }
     return { showDetail: !s.showDetail }
   }),
   setActiveView: (activeView) => set({ activeView }),

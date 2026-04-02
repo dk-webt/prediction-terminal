@@ -651,3 +651,32 @@ html, body, #root {
   border-top: 1px solid var(--border);
   text-align: center;
 }
+
+/* ── Positions Panel ─────────────────────────────────────────────────────── */
+
+.pos-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.pos-table th {
+  color: var(--amber-dim);
+  font-weight: normal;
+  text-align: left;
+  padding: 2px 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+}
+
+.pos-table td {
+  padding: 3px 6px;
+  color: var(--amber);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.pos-yes { color: #00cc44; }
+.pos-no  { color: #ff4444; }
