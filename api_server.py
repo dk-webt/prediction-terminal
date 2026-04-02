@@ -994,8 +994,9 @@ async def websocket_btc(websocket: WebSocket):
 
             elif cmd == "btc_refresh":
                 if _btc_stream:
+                    hard = data.get("hard", False)
                     await websocket.send_json({"type": "btc_refresh_status", "status": "refreshing"})
-                    await _btc_stream.force_refresh()
+                    await _btc_stream.force_refresh(hard=hard)
                     await websocket.send_json({"type": "btc_refresh_status", "status": "done"})
                 else:
                     await websocket.send_json({"type": "error", "msg": "BTC stream not running"})

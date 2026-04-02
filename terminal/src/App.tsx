@@ -838,8 +838,13 @@ export default function App() {
               useStore.getState().setShowOrders(true)
             }
           } else if (btcSub === 'REFRESH') {
-            manager.sendBtc({ type: 'btc_refresh' })
-            setProgressMsg('Refreshing KS + PM contracts and reconnecting feeds...')
+            const refreshMode = (parts[2] || '').toUpperCase()
+            const hard = refreshMode === 'FORCE'
+            manager.sendBtc({ type: 'btc_refresh', hard })
+            setProgressMsg(hard
+              ? 'HARD REFRESH: re-fetching contracts + reconnecting all WebSockets...'
+              : 'Refreshing KS + PM contracts (in-place swap)...'
+            )
           } else {
             setActiveView('BTC')
             setCenterView('BTC')
