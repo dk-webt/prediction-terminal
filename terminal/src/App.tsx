@@ -746,32 +746,28 @@ export default function App() {
             setErrorMsg('BTC socket not connected. Retry in a moment.')
             return
           }
-          setActiveView('BTC')
-          setCenterView('BTC')
-          setLoading(true)
-          setProgressMsg('Connecting to BTC 15-min live stream...')
-          setBtcAutoRefresh(true)
-          manager.subscribeBtc()
-          break
-        }
-
-        case 'ATE': {
-          if (!manager?.btcReady) {
-            setErrorMsg('BTC socket not connected. Run BTC first.')
-            return
-          }
-          const ateSub = (parts[1] || '').toUpperCase()
-          if (ateSub === 'ON') {
-            manager.sendBtc({ type: 'btc_ate', action: 'on' })
-            setProgressMsg('ATE: Auto Trade Executor ENABLED — monitoring for arb...')
-          } else if (ateSub === 'OFF') {
-            manager.sendBtc({ type: 'btc_ate', action: 'off' })
-            setProgressMsg('ATE: Auto Trade Executor DISABLED')
-            setTimeout(() => useStore.getState().setProgressMsg(''), 3000)
+          const btcSub = (parts[1] || '').toUpperCase()
+          if (btcSub === 'ATE') {
+            const ateAction = (parts[2] || '').toUpperCase()
+            if (ateAction === 'ON') {
+              manager.sendBtc({ type: 'btc_ate', action: 'on' })
+              setProgressMsg('ATE: Auto Trade Executor ENABLED — monitoring for arb...')
+            } else if (ateAction === 'OFF') {
+              manager.sendBtc({ type: 'btc_ate', action: 'off' })
+              setProgressMsg('ATE: Auto Trade Executor DISABLED')
+              setTimeout(() => useStore.getState().setProgressMsg(''), 3000)
+            } else {
+              manager.sendBtc({ type: 'btc_ate', action: 'status' })
+              setProgressMsg('ATE: checking status...')
+              setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
+            }
           } else {
-            manager.sendBtc({ type: 'btc_ate', action: 'status' })
-            setProgressMsg('ATE: checking status...')
-            setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
+            setActiveView('BTC')
+            setCenterView('BTC')
+            setLoading(true)
+            setProgressMsg('Connecting to BTC 15-min live stream...')
+            setBtcAutoRefresh(true)
+            manager.subscribeBtc()
           }
           break
         }
