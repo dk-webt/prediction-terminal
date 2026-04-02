@@ -528,7 +528,8 @@ class BtcStreamManager:
         self._tasks.clear()
 
     async def force_refresh(self):
-        """Manual refresh: re-fetch contracts from both platforms and reconnect WS feeds.
+        """Manual refresh: re-fetch contracts from both platforms and swap WS
+        subscriptions in-place (no reconnect). Falls back to reconnect if swap fails.
         Use as fallback when auto-roll fails or data looks stale."""
         log.warning("FORCE REFRESH: re-fetching contracts from both platforms")
 
@@ -549,8 +550,14 @@ class BtcStreamManager:
                 self._kalshi_ticker = ks_data.get("ticker", "")
                 self._mark_ks_recv()
                 log.info("FORCE REFRESH: KS updated — ticker=%s", self._kalshi_ticker)
-                # Reconnect KS WS to pick up new ticker
-                self._ks_reconnect.set()
+                # Try in-place subscription swap first (keeps WS alive)
+                if old_ks_ticker and self._kalshi_ticker != old_ks_ticker:
+                    swapped = await self._kalshi_update_subscription(old_ks_ticker, self._kalshi_ticker)
+                    if not swapped:
+                        log.info("FORCE REFRESH: KS in-place swap failed, reconnecting WS")
+                        self._ks_reconnect.set()
+                    else:
+                        log.info("FORCE REFRESH: KS subscription swapped in-place")
             elif isinstance(ks_data, Exception):
                 log.warning("FORCE REFRESH: KS fetch failed — %s", ks_data)
             else:
@@ -565,8 +572,14 @@ class BtcStreamManager:
                 self._mark_pm_recv()
                 log.info("FORCE REFRESH: PM updated — slug=%s tokens=%d",
                          self._current_slug, len(self._pm_token_ids))
-                # Reconnect PM WS to pick up new tokens
-                self._pm_reconnect.set()
+                # Try in-place token swap first (keeps WS alive)
+                swapped = await self._pm_swap_tokens(old_pm_tokens, self._pm_token_ids)
+                if not swapped:
+                    log.info("FORCE REFRESH: PM in-place swap failed, reconnecting WS")
+                    self._pm_reconnect.set()
+                else:
+                    log.info("FORCE REFRESH: PM tokens swapped in-place")
+                # Always reconnect user channel (condition_id may have changed)
                 self._pm_user_reconnect.set()
             elif isinstance(pm_data, Exception):
                 log.warning("FORCE REFRESH: PM fetch failed — %s", pm_data)
