@@ -15,24 +15,37 @@ Compare the printed bid/ask with the PM UI in real-time.
 """
 
 import asyncio
+import calendar
 import json
 import time
+from datetime import datetime, timedelta, timezone
 
 import requests
 import websockets
 
 
+def _current_15m_slug() -> str:
+    """Compute the slug for the current PM BTC 15-min window."""
+    now = datetime.now(timezone.utc)
+    minute = (now.minute // 15) * 15
+    window_start = now.replace(minute=minute, second=0, microsecond=0)
+    ts = int(calendar.timegm(window_start.timetuple()))
+    return f"btc-updown-15m-{ts}"
+
+
 async def monitor():
-    # Find active BTC 15-min tokens
-    print("Finding active BTC 15-min market...")
+    # Find active BTC 15-min tokens using exact slug match
+    slug = _current_15m_slug()
+    print(f"Finding active BTC 15-min market (slug={slug})...")
     resp = requests.get(
         "https://gamma-api.polymarket.com/events",
-        params={"slug_contains": "btc-updown-15m", "active": "true", "limit": 1},
+        params={"slug": slug},
         timeout=10,
     )
     events = resp.json()
     if not events:
-        print("No active BTC 15-min market found")
+        print(f"No market found for slug={slug}")
+        print("The market may not exist yet (appears ~8s after window start)")
         return
 
     market = events[0]["markets"][0]
