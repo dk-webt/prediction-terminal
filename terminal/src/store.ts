@@ -48,7 +48,9 @@ interface TerminalState {
   showKs: boolean
   showDetail: boolean
   showPositions: boolean
+  showOrders: boolean
   positions: PositionsState
+  recentOrders: TrackedOrder[]
 
   // UI state
   activeView: View
@@ -92,8 +94,11 @@ interface TerminalState {
   setShowKs: (v: boolean) => void
   setShowDetail: (v: boolean) => void
   setShowPositions: (v: boolean) => void
+  setShowOrders: (v: boolean) => void
   setPositions: (v: Partial<PositionsState>) => void
-  togglePanel: (panel: 'pm' | 'ks' | 'detail' | 'positions') => void
+  retireOrder: (orderId: string) => void
+  clearRecentOrders: () => void
+  togglePanel: (panel: 'pm' | 'ks' | 'detail' | 'positions' | 'orders') => void
   setActiveView: (v: View) => void
   setActiveCategory: (v: string | null) => void
   setSelectedIndex: (v: number | null) => void
@@ -138,7 +143,9 @@ export const useStore = create<TerminalState>((set) => ({
   showKs: true,
   showDetail: true,
   showPositions: false,
+  showOrders: false,
   positions: { kalshi: [], polymarket: [], loading: false, error: null, lastFetched: 0 },
+  recentOrders: [],
   activeView: 'IDLE',
   activeCategory: null,
   selectedIndex: null,
@@ -181,11 +188,24 @@ export const useStore = create<TerminalState>((set) => ({
   setShowKs: (showKs) => set({ showKs }),
   setShowDetail: (showDetail) => set({ showDetail }),
   setShowPositions: (showPositions) => set({ showPositions }),
+  setShowOrders: (showOrders) => set({ showOrders }),
   setPositions: (v) => set((s) => ({ positions: { ...s.positions, ...v } })),
+  retireOrder: (orderId) => set((s) => {
+    const order = s.activeOrders.get(orderId)
+    if (!order) return {}
+    const next = new Map(s.activeOrders)
+    next.delete(orderId)
+    return {
+      activeOrders: next,
+      recentOrders: [...s.recentOrders.slice(-49), order],
+    }
+  }),
+  clearRecentOrders: () => set({ recentOrders: [] }),
   togglePanel: (panel) => set((s) => {
     if (panel === 'pm') return { showPm: !s.showPm }
     if (panel === 'ks') return { showKs: !s.showKs }
     if (panel === 'positions') return { showPositions: !s.showPositions }
+    if (panel === 'orders') return { showOrders: !s.showOrders }
     return { showDetail: !s.showDetail }
   }),
   setActiveView: (activeView) => set({ activeView }),

@@ -241,6 +241,8 @@ function HelpView() {
     ['BTC ATE ON', 'Enable Auto Trade Executor — buys arb combo when profit >= $0.06'],
     ['BTC ATE OFF', 'Disable Auto Trade Executor'],
     ['BTC ATE', 'Show ATE status'],
+    ['BTC ORDERS', 'Show live orders panel (active + recent fills)'],
+    ['BTC ORDERS CLEAR', 'Clear recent fills from orders panel'],
     ['POS', 'Show current positions on both platforms'],
     ['FUND KS/PM/PCT', 'Set trade funds (FUND KS 50, FUND PM 60, FUND PCT 0.6)'],
     ['SHOW/HIDE/TOGGLE PM|KS|DETAIL', 'Show, hide, or toggle side panels'],

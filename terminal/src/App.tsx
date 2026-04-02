@@ -261,13 +261,13 @@ export default function App() {
             state.updateOrderStatus(orderId, 'canceled')
             state.setProgressMsg('KS ORDER: canceled')
             setTimeout(() => {
-              useStore.getState().removeOrder(orderId)
+              useStore.getState().retireOrder(orderId)
               useStore.getState().setProgressMsg('')
             }, 3000)
           } else if (status === 'executed') {
             const fillCount = Number(data.fill_count_fp || 0)
             state.updateOrderStatus(orderId, 'filled', fillCount)
-            setTimeout(() => useStore.getState().removeOrder(orderId), 3000)
+            setTimeout(() => useStore.getState().retireOrder(orderId), 3000)
           }
         }
 
@@ -310,7 +310,7 @@ export default function App() {
             state.updateOrderStatus(orderId, 'canceled')
             state.setProgressMsg('PM ORDER: canceled')
             setTimeout(() => {
-              useStore.getState().removeOrder(orderId)
+              useStore.getState().retireOrder(orderId)
               useStore.getState().setProgressMsg('')
             }, 3000)
           } else if (eventType === 'UPDATE') {
@@ -318,7 +318,7 @@ export default function App() {
             const original = Number(data.original_size || 0)
             if (matched >= original && original > 0) {
               state.updateOrderStatus(orderId, 'filled', matched)
-              setTimeout(() => useStore.getState().removeOrder(orderId), 3000)
+              setTimeout(() => useStore.getState().retireOrder(orderId), 3000)
             } else {
               state.updateOrderStatus(orderId, 'partial', matched)
             }
@@ -596,15 +596,16 @@ export default function App() {
         case 'HIDE':
         case 'TOGGLE': {
           const target = (parts[1] || '').toUpperCase()
-          const panelMap: Record<string, 'pm' | 'ks' | 'detail' | 'positions'> = {
+          const panelMap: Record<string, 'pm' | 'ks' | 'detail' | 'positions' | 'orders'> = {
             PM: 'pm', POLY: 'pm', POLYMARKET: 'pm',
             KS: 'ks', KALSHI: 'ks',
             DETAIL: 'detail', DET: 'detail',
             POS: 'positions', POSITIONS: 'positions',
+            ORDERS: 'orders', ORD: 'orders',
           }
           const panel = panelMap[target]
           if (!panel) {
-            setErrorMsg(`Usage: ${cmd} PM|KS|DETAIL|POS`)
+            setErrorMsg(`Usage: ${cmd} PM|KS|DETAIL|POS|ORDERS`)
             setTimeout(() => useStore.getState().setErrorMsg(''), 3000)
             break
           }
@@ -615,6 +616,7 @@ export default function App() {
             if (panel === 'pm') useStore.getState().setShowPm(show)
             else if (panel === 'ks') useStore.getState().setShowKs(show)
             else if (panel === 'positions') useStore.getState().setShowPositions(show)
+            else if (panel === 'orders') useStore.getState().setShowOrders(show)
             else useStore.getState().setShowDetail(show)
           }
           break
@@ -818,6 +820,15 @@ export default function App() {
               manager.sendBtc({ type: 'btc_ate', action: 'status' })
               setProgressMsg('ATE: checking status...')
               setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
+            }
+          } else if (btcSub === 'ORDERS') {
+            const ordersAction = (parts[2] || '').toUpperCase()
+            if (ordersAction === 'CLEAR') {
+              useStore.getState().clearRecentOrders()
+              setProgressMsg('Recent orders cleared')
+              setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
+            } else {
+              useStore.getState().setShowOrders(true)
             }
           } else {
             setActiveView('BTC')
