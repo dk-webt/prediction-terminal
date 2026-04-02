@@ -429,6 +429,14 @@ export default function BtcPanel() {
                 <span className="btc-value btc-highlight">{fmtStrike(ks.floor_strike)}</span>
               </div>
               <div className="btc-field">
+                <span className="btc-label">BRTI Live</span>
+                <span className="btc-value" style={{ color: btcSnapshot.btc_coinbase != null && ks.floor_strike != null
+                  ? (btcSnapshot.btc_coinbase >= ks.floor_strike ? '#00cc44' : '#ff4444')
+                  : 'var(--amber)' }}>
+                  {btcSnapshot.btc_coinbase != null ? `$${btcSnapshot.btc_coinbase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '---'}
+                </span>
+              </div>
+              <div className="btc-field">
                 <span className="btc-label">Source</span>
                 <span className="btc-value btc-dim">CF Benchmarks BRTI ({btcSnapshot.brti_active_exchanges ?? '?'} of 6 exchanges)</span>
               </div>
