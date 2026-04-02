@@ -168,6 +168,13 @@ export default function App() {
           state.setProgressMsg('ATE: DISABLED')
         }
         setTimeout(() => useStore.getState().setProgressMsg(''), 5000)
+      } else if (msg.type === 'btc_refresh_status') {
+        const state = useStore.getState()
+        const status = msg.status as string
+        if (status === 'done') {
+          state.setProgressMsg('BTC REFRESH: contracts and feeds updated')
+          setTimeout(() => useStore.getState().setProgressMsg(''), 3000)
+        }
       }
     }
 
@@ -830,6 +837,9 @@ export default function App() {
             } else {
               useStore.getState().setShowOrders(true)
             }
+          } else if (btcSub === 'REFRESH') {
+            manager.sendBtc({ type: 'btc_refresh' })
+            setProgressMsg('Refreshing KS + PM contracts and reconnecting feeds...')
           } else {
             setActiveView('BTC')
             setCenterView('BTC')

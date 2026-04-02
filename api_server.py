@@ -992,6 +992,14 @@ async def websocket_btc(websocket: WebSocket):
                         "min_profit": ATE_MIN_PROFIT, "count": ATE_ORDER_COUNT,
                     })
 
+            elif cmd == "btc_refresh":
+                if _btc_stream:
+                    await websocket.send_json({"type": "btc_refresh_status", "status": "refreshing"})
+                    await _btc_stream.force_refresh()
+                    await websocket.send_json({"type": "btc_refresh_status", "status": "done"})
+                else:
+                    await websocket.send_json({"type": "error", "msg": "BTC stream not running"})
+
             elif cmd == "btc_debug":
                 action = data.get("action", "get")
                 if action == "on":

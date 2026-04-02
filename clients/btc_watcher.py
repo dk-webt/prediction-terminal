@@ -527,6 +527,59 @@ class BtcStreamManager:
                 pass
         self._tasks.clear()
 
+    async def force_refresh(self):
+        """Manual refresh: re-fetch contracts from both platforms and reconnect WS feeds.
+        Use as fallback when auto-roll fails or data looks stale."""
+        log.warning("FORCE REFRESH: re-fetching contracts from both platforms")
+
+        old_ks_ticker = self._kalshi_ticker
+        old_pm_tokens = list(self._pm_token_ids)
+
+        try:
+            # Fetch both platforms in parallel
+            ks_data, pm_data = await asyncio.gather(
+                asyncio.to_thread(fetch_kalshi_btc_15m),
+                asyncio.to_thread(fetch_polymarket_btc_15m),
+                return_exceptions=True,
+            )
+
+            # Update Kalshi
+            if isinstance(ks_data, dict) and not ks_data.get("error"):
+                self._kalshi_data = ks_data
+                self._kalshi_ticker = ks_data.get("ticker", "")
+                self._mark_ks_recv()
+                log.info("FORCE REFRESH: KS updated — ticker=%s", self._kalshi_ticker)
+                # Reconnect KS WS to pick up new ticker
+                self._ks_reconnect.set()
+            elif isinstance(ks_data, Exception):
+                log.warning("FORCE REFRESH: KS fetch failed — %s", ks_data)
+            else:
+                log.warning("FORCE REFRESH: KS returned error — %s", ks_data.get("error") if isinstance(ks_data, dict) else ks_data)
+
+            # Update Polymarket
+            if isinstance(pm_data, dict) and not pm_data.get("error"):
+                self._pm_data = pm_data
+                self._pm_token_ids = pm_data.get("token_ids", [])
+                self._pm_condition_id = pm_data.get("condition_id", "")
+                self._current_slug = pm_data.get("slug", "")
+                self._mark_pm_recv()
+                log.info("FORCE REFRESH: PM updated — slug=%s tokens=%d",
+                         self._current_slug, len(self._pm_token_ids))
+                # Reconnect PM WS to pick up new tokens
+                self._pm_reconnect.set()
+                self._pm_user_reconnect.set()
+            elif isinstance(pm_data, Exception):
+                log.warning("FORCE REFRESH: PM fetch failed — %s", pm_data)
+            else:
+                log.warning("FORCE REFRESH: PM returned error — %s", pm_data.get("error") if isinstance(pm_data, dict) else pm_data)
+
+            self._rolling = False
+            await self._push_update(force=True)
+            log.info("FORCE REFRESH: complete")
+
+        except Exception:
+            log.exception("FORCE REFRESH: error")
+
     def _next_ks_cmd_id(self) -> int:
         """Get next incrementing command ID for Kalshi WS."""
         self._ks_cmd_id += 1
