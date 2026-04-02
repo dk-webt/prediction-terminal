@@ -383,7 +383,24 @@ _active_orders: dict[str, dict] = {}  # order_id -> order info
 _ate_enabled = False
 _ate_executing = False  # guard against concurrent execution
 ATE_MIN_PROFIT = 0.06  # minimum profit per contract to trigger
-ATE_ORDER_COUNT = 10    # contracts per leg
+ATE_MAX_COUNT = 10      # maximum contracts per leg (upper bound)
+ATE_MIN_COUNT = 1       # minimum contracts to bother executing
+ATE_ORDER_COUNT = ATE_MAX_COUNT  # backward compat alias
+
+
+def _check_depth(levels: list[tuple[float, float]], count: int, price_cap: float) -> tuple[bool, int]:
+    """Walk orderbook levels to check if `count` contracts available within price_cap.
+    levels: [(price, size), ...] sorted ascending by price.
+    Returns (sufficient, available_count).
+    """
+    available = 0
+    for price, size in levels:
+        if price > price_cap:
+            break
+        available += size
+        if available >= count:
+            return True, int(min(available, count))
+    return False, int(available)
 
 
 async def _btc_broadcast(snapshot: dict):
@@ -414,6 +431,78 @@ async def _trade_broadcast(msg_type: str, data: dict):
             dead.append(ws)
     for ws in dead:
         _trade_subscribers.discard(ws)
+
+
+async def _ate_unwind(trade_ws, platform: str, side: str, ticker: str, token_id: str,
+                      buy_result: dict, requested_count: int):
+    """Unwind a successful leg after the other leg failed. Sells the position at market."""
+    import uuid as _uuid
+
+    try:
+        if platform == "kalshi":
+            # Parse fill count from KS result — may be partial
+            order_data = buy_result.get("data", {})
+            if isinstance(order_data, dict):
+                order_info = order_data.get("order", order_data)
+                fill_count = int(float(order_info.get("fill_count_fp", 0)))
+                ks_order_id = order_info.get("order_id", "")
+                status = order_info.get("status", "")
+
+                # Cancel resting portion if order is still resting
+                if status == "resting" and ks_order_id:
+                    log.warning("ATE UNWIND: canceling resting KS order %s", ks_order_id)
+                    from clients.executor import cancel_kalshi_order
+                    await asyncio.to_thread(cancel_kalshi_order, ks_order_id)
+            else:
+                fill_count = requested_count
+
+            if fill_count <= 0:
+                log.info("ATE UNWIND: KS fill_count=0, nothing to unwind")
+                return
+
+            # Sell the filled contracts
+            unwind_id = f"unwind-{str(_uuid.uuid4())[:6]}"
+            unwind_pending = {unwind_id: {
+                "platform": "kalshi", "action": "sell", "side": side,
+                "count": fill_count, "price": None, "order_type": "market",
+                "ticker": ticker, "token_id": "",
+            }}
+            log.warning("ATE UNWIND: selling %d KS %s MKT", fill_count, side.upper())
+            result = await _execute_order(trade_ws, unwind_id, unwind_pending)
+
+        else:  # polymarket
+            # PM FOK = all or nothing, so fill_count = requested_count
+            unwind_id = f"unwind-{str(_uuid.uuid4())[:6]}"
+            unwind_pending = {unwind_id: {
+                "platform": "polymarket", "action": "sell", "side": side,
+                "count": requested_count, "price": None, "order_type": "market",
+                "ticker": "", "token_id": token_id,
+            }}
+            log.warning("ATE UNWIND: selling %d PM %s MKT", requested_count, side.upper())
+            result = await _execute_order(trade_ws, unwind_id, unwind_pending)
+
+        unwind_ok = result and result.get("success")
+        if unwind_ok:
+            log.warning("ATE UNWIND: success — position closed")
+        else:
+            log.error("ATE UNWIND: FAILED — %s — MANUAL INTERVENTION NEEDED",
+                      result.get("error") if result else "no result")
+
+        # Notify frontend
+        for ws in list(_trade_subscribers):
+            try:
+                await ws.send_json({
+                    "type": "ate_unwind",
+                    "platform": platform,
+                    "success": unwind_ok,
+                    "count": fill_count if platform == "kalshi" else requested_count,
+                    "error": result.get("error") if result and not unwind_ok else None,
+                })
+            except Exception:
+                pass
+
+    except Exception:
+        log.exception("ATE UNWIND: exception during unwind — MANUAL INTERVENTION NEEDED")
 
 
 async def _ate_check(snapshot: dict):
@@ -471,9 +560,6 @@ async def _ate_check(snapshot: dict):
     if not chosen:
         return
 
-    # Trigger! Disable ATE and execute
-    _ate_executing = True
-    _ate_enabled = False
     profit = profit_a if chosen == "A" else profit_b
     cost = cost_a if chosen == "A" else cost_b
 
@@ -484,9 +570,66 @@ async def _ate_check(snapshot: dict):
         ks_side, pm_side = "no", "up"
         label = "KS NO + PM UP"
 
+    # Pre-execution liquidity check — verify depth on both sides
+    ks_ticker = ks.get("ticker", "")
+    pm_token_ids = pm.get("token_ids", [])
+    if pm_side == "up":
+        pm_token_id = pm_token_ids[0] if len(pm_token_ids) > 0 else ""
+    else:
+        pm_token_id = pm_token_ids[1] if len(pm_token_ids) > 1 else ""
+
+    try:
+        from clients.executor import fetch_kalshi_orderbook, fetch_polymarket_orderbook
+        ks_ob, pm_ob = await asyncio.gather(
+            asyncio.to_thread(fetch_kalshi_orderbook, ks_ticker),
+            asyncio.to_thread(fetch_polymarket_orderbook, pm_token_id),
+        )
+
+        # KS: yes_ask levels = inverted no_dollars bids; no_ask levels = inverted yes_dollars bids
+        if ks_side == "yes":
+            ks_raw = ks_ob.get("no_dollars", [])
+            ks_ask_levels = [(round(1.0 - float(p), 4), float(s)) for p, s in ks_raw if float(s) > 0]
+            ks_ask_levels.sort()  # ascending by price
+        else:
+            ks_raw = ks_ob.get("yes_dollars", [])
+            ks_ask_levels = [(round(1.0 - float(p), 4), float(s)) for p, s in ks_raw if float(s) > 0]
+            ks_ask_levels.sort()
+
+        pm_ask_levels = [(float(a["price"]), float(a["size"])) for a in pm_ob.get("asks", [])]
+        pm_ask_levels.sort()
+
+        ks_cap = (ks_yes_ask if ks_side == "yes" else ks_no_ask) + 0.02
+        pm_cap = (pm_down_ask if pm_side == "down" else pm_up_ask) + 0.02
+
+        ks_depth_ok, ks_avail = _check_depth(ks_ask_levels, ATE_ORDER_COUNT, ks_cap)
+        pm_depth_ok, pm_avail = _check_depth(pm_ask_levels, ATE_ORDER_COUNT, pm_cap)
+
+        log.info("ATE liquidity: KS %s %d/%d @ cap %.2f | PM %s %d/%d @ cap %.2f",
+                 "OK" if ks_depth_ok else "THIN", ks_avail, ATE_ORDER_COUNT, ks_cap,
+                 "OK" if pm_depth_ok else "THIN", pm_avail, ATE_ORDER_COUNT, pm_cap)
+
+        if not ks_depth_ok or not pm_depth_ok:
+            # Phase 4: adaptive sizing — use min available
+            actual_count = min(ks_avail, pm_avail, ATE_ORDER_COUNT)
+            if actual_count < ATE_MIN_COUNT:
+                log.warning("ATE: insufficient liquidity — KS: %d, PM: %d, need >= %d — skipping",
+                            ks_avail, pm_avail, ATE_MIN_COUNT)
+                return
+            log.info("ATE: adapting size from %d to %d based on available depth",
+                     ATE_ORDER_COUNT, actual_count)
+        else:
+            actual_count = ATE_ORDER_COUNT
+    except Exception as e:
+        log.warning("ATE: liquidity check failed: %s — proceeding with default size", e)
+        actual_count = ATE_ORDER_COUNT
+
+    # Trigger! Disable ATE and execute
+    _ate_executing = True
+    _ate_enabled = False
+
     log.warning(
         "ATE TRIGGERED: %s | cost=%.3f profit=%.3f (%.1f%%) | %d contracts",
-        label, cost, profit, profit * 100, ATE_ORDER_COUNT,
+        label, cost, profit, profit * 100, actual_count,
     )
 
     # Notify all trade subscribers
@@ -495,7 +638,7 @@ async def _ate_check(snapshot: dict):
         "combo": label,
         "cost": round(cost, 4),
         "profit": round(profit, 4),
-        "count": ATE_ORDER_COUNT,
+        "count": actual_count,
     }
     for ws in list(_trade_subscribers):
         try:
@@ -510,50 +653,68 @@ async def _ate_check(snapshot: dict):
         _ate_executing = False
         return
 
+    ate_status = "error"
     try:
-        ks_ticker = ks.get("ticker", "")
-        pm_token_ids = pm.get("token_ids", [])
-
-        # Determine PM token_id for the side
-        # token_ids[0] = up/yes, token_ids[1] = down/no
-        if pm_side == "up":
-            pm_token_id = pm_token_ids[0] if len(pm_token_ids) > 0 else ""
-        else:
-            pm_token_id = pm_token_ids[1] if len(pm_token_ids) > 1 else ""
-
-        # Build and execute both orders as auto-execute (no confirmation)
         import uuid as _uuid
 
-        # Leg 1: Kalshi
+        # Build both order dicts with adaptive count
         ks_order_id = f"ate-{str(_uuid.uuid4())[:6]}"
         ks_pending = {ks_order_id: {
             "platform": "kalshi", "action": "buy", "side": ks_side,
-            "count": ATE_ORDER_COUNT, "price": None, "order_type": "market",
+            "count": actual_count, "price": None, "order_type": "market",
             "ticker": ks_ticker, "token_id": "",
         }}
-        log.info("ATE: executing leg 1 — BUY %d KS %s MKT", ATE_ORDER_COUNT, ks_side.upper())
-        await _execute_order(trade_ws, ks_order_id, ks_pending)
-
-        # Leg 2: Polymarket
         pm_order_id = f"ate-{str(_uuid.uuid4())[:6]}"
         pm_pending = {pm_order_id: {
             "platform": "polymarket", "action": "buy", "side": pm_side,
-            "count": ATE_ORDER_COUNT, "price": None, "order_type": "market",
+            "count": actual_count, "price": None, "order_type": "market",
             "ticker": "", "token_id": pm_token_id,
         }}
-        log.info("ATE: executing leg 2 — BUY %d PM %s MKT", ATE_ORDER_COUNT, pm_side.upper())
-        await _execute_order(trade_ws, pm_order_id, pm_pending)
 
-        log.warning("ATE: both legs executed — auto-disabled")
+        # Execute both legs in parallel
+        log.info("ATE: executing PARALLEL — BUY %d KS %s + BUY %d PM %s MKT",
+                 actual_count, ks_side.upper(), actual_count, pm_side.upper())
+        results = await asyncio.gather(
+            _execute_order(trade_ws, ks_order_id, ks_pending),
+            _execute_order(trade_ws, pm_order_id, pm_pending),
+            return_exceptions=True,
+        )
+        ks_result = results[0] if not isinstance(results[0], Exception) else {"success": False, "error": str(results[0])}
+        pm_result = results[1] if not isinstance(results[1], Exception) else {"success": False, "error": str(results[1])}
+
+        # Check per-leg results
+        ks_ok = isinstance(ks_result, dict) and ks_result.get("success")
+        pm_ok = isinstance(pm_result, dict) and pm_result.get("success")
+
+        if ks_ok and pm_ok:
+            log.warning("ATE: both legs executed successfully — auto-disabled")
+            ate_status = "success"
+        elif ks_ok and not pm_ok:
+            log.error("ATE: KS succeeded but PM FAILED: %s — attempting unwind",
+                      pm_result.get("error") if isinstance(pm_result, dict) else pm_result)
+            ate_status = "partial_ks"
+            await _ate_unwind(trade_ws, "kalshi", ks_side, ks_ticker, "", ks_result, actual_count)
+        elif pm_ok and not ks_ok:
+            log.error("ATE: PM succeeded but KS FAILED: %s — attempting unwind",
+                      ks_result.get("error") if isinstance(ks_result, dict) else ks_result)
+            ate_status = "partial_pm"
+            await _ate_unwind(trade_ws, "polymarket", pm_side, "", pm_token_id, pm_result, actual_count)
+        else:
+            log.error("ATE: BOTH legs failed — KS: %s | PM: %s",
+                      ks_result.get("error") if isinstance(ks_result, dict) else ks_result,
+                      pm_result.get("error") if isinstance(pm_result, dict) else pm_result)
+            ate_status = "failed"
+
     except Exception:
         log.exception("ATE: execution error")
+        ate_status = "error"
     finally:
         _ate_executing = False
 
-    # Notify completion
+    # Notify completion with status
     for ws in list(_trade_subscribers):
         try:
-            await ws.send_json({"type": "ate_done", "combo": label})
+            await ws.send_json({"type": "ate_done", "combo": label, "status": ate_status})
         except Exception:
             pass
 
@@ -945,9 +1106,12 @@ async def _execute_order(websocket, order_id: str, pending_orders: dict):
         else:
             log.warning("ORDER %s: failed — %s", order_id, result.get("error", "unknown"))
         await websocket.send_json({"type": "btc_order_result", **result})
+        return result
     except Exception as exc:
         log.error("ORDER %s: exception — %s", order_id, exc, exc_info=True)
-        await websocket.send_json({"type": "btc_order_result", "success": False, "error": str(exc)})
+        result = {"success": False, "error": str(exc)}
+        await websocket.send_json({"type": "btc_order_result", **result})
+        return result
 
 @app.websocket("/ws/trade")
 async def websocket_trade(websocket: WebSocket):

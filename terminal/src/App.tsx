@@ -333,8 +333,30 @@ export default function App() {
       } else if (msg.type === 'ate_done') {
         const state = useStore.getState()
         const combo = msg.combo as string
-        state.setProgressMsg(`ATE COMPLETE: ${combo} — both legs executed. ATE auto-disabled.`)
-        setTimeout(() => useStore.getState().setProgressMsg(''), 10000)
+        const status = msg.status as string
+        if (status === 'success') {
+          state.setProgressMsg(`ATE COMPLETE: ${combo} — both legs executed. ATE auto-disabled.`)
+        } else if (status === 'partial_ks') {
+          state.setErrorMsg(`ATE PARTIAL: ${combo} — KS filled but PM FAILED. Unwinding KS...`)
+        } else if (status === 'partial_pm') {
+          state.setErrorMsg(`ATE PARTIAL: ${combo} — PM filled but KS FAILED. Unwinding PM...`)
+        } else if (status === 'failed') {
+          state.setErrorMsg(`ATE FAILED: ${combo} — both legs failed. No position.`)
+        } else {
+          state.setErrorMsg(`ATE ERROR: ${combo} — execution error. Check logs.`)
+        }
+        setTimeout(() => { useStore.getState().setProgressMsg(''); useStore.getState().setErrorMsg('') }, 15000)
+      } else if (msg.type === 'ate_unwind') {
+        const state = useStore.getState()
+        const platform = (msg.platform as string).toUpperCase()
+        const success = msg.success as boolean
+        const count = msg.count as number
+        if (success) {
+          state.setProgressMsg(`ATE UNWIND: sold ${count} ${platform} contracts — position closed`)
+        } else {
+          state.setErrorMsg(`ATE UNWIND FAILED: could not sell ${count} ${platform} — MANUAL CLOSE NEEDED: ${msg.error || ''}`)
+        }
+        setTimeout(() => { useStore.getState().setProgressMsg(''); useStore.getState().setErrorMsg('') }, 15000)
       }
     }
 

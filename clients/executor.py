@@ -169,6 +169,69 @@ def place_kalshi_order(
         return {"success": False, "error": str(e)}
 
 
+def cancel_kalshi_order(order_id: str) -> dict:
+    """Cancel a resting Kalshi order."""
+    if not kalshi_auth_available():
+        return {"success": False, "error": "Kalshi API keys not configured"}
+
+    path = f"/trade-api/v2/portfolio/orders/{order_id}"
+    headers = _kalshi_rest_auth_headers("DELETE", path)
+    if not headers:
+        return {"success": False, "error": "Failed to sign Kalshi request"}
+
+    try:
+        resp = requests.delete(
+            f"{KALSHI_BASE}/portfolio/orders/{order_id}",
+            headers=headers,
+            timeout=10,
+        )
+        data = resp.json()
+        if resp.status_code in (200, 201, 204):
+            log.info("KS cancel order %s: success", order_id)
+            return {"success": True, "data": data}
+        else:
+            log.warning("KS cancel order %s: %s", order_id, data)
+            return {"success": False, "error": data.get("message", f"HTTP {resp.status_code}"), "data": data}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def fetch_kalshi_orderbook(ticker: str) -> dict:
+    """Fetch full Kalshi orderbook depth for a market."""
+    if not kalshi_auth_available():
+        return {}
+    path = f"/trade-api/v2/markets/{ticker}/orderbook"
+    headers = _kalshi_rest_auth_headers("GET", path)
+    if not headers:
+        return {}
+    try:
+        resp = requests.get(
+            f"{KALSHI_BASE}/markets/{ticker}/orderbook",
+            headers=headers,
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            return resp.json().get("orderbook_fp", {})
+    except Exception as e:
+        log.warning("fetch_kalshi_orderbook error: %s", e)
+    return {}
+
+
+def fetch_polymarket_orderbook(token_id: str) -> dict:
+    """Fetch full Polymarket CLOB orderbook depth."""
+    try:
+        resp = requests.get(
+            f"https://clob.polymarket.com/book",
+            params={"token_id": token_id},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception as e:
+        log.warning("fetch_polymarket_orderbook error: %s", e)
+    return {}
+
+
 def get_kalshi_positions() -> dict:
     """Fetch Kalshi positions for KXBTC15M series."""
     if not kalshi_auth_available():
