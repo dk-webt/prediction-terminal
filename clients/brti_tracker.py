@@ -979,10 +979,13 @@ async def _main():
         from datetime import datetime, timezone
         t = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%H:%M:%S")
         settlement = tracker.get_settlement_price()
-        settle_str = f"  settle={settlement:.2f}" if settlement else ""
+        n_samples = len(tracker.settlement_buffer)
         status = tracker.get_status()
         active = status["active_exchanges"]
-        print(f"[{t}] BRTI: ${value:,.2f}  ({active}/5 exchanges){settle_str}")
+        if settlement:
+            print(f"[{t}] BRTI: ${value:,.2f}  |  60s avg: ${settlement:,.2f}  ({active}/5 exchanges)")
+        else:
+            print(f"[{t}] BRTI: ${value:,.2f}  |  60s avg: collecting ({n_samples}/60)  ({active}/5 exchanges)")
 
     tracker = BRTITracker(
         coinbase_api_key=COINBASE_CDP_API_KEY,
