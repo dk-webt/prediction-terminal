@@ -690,16 +690,20 @@ export default function App() {
               const ksErr = data.kalshi?.error
               const pmErr = data.polymarket?.error
 
-              const kalshi = ksRaw.map((p: Record<string, unknown>) => ({
-                platform: 'kalshi' as const,
-                ticker: (p.ticker || '') as string,
-                title: (p.event_title || p.ticker || '') as string,
-                side: ((p.market_position || '') as string).toLowerCase() || 'yes',
-                size: Number(p.total_traded) || Number(p.position) || 0,
-                avgPrice: Number(p.resting_orders_count) > 0 ? 0 : 0,
-                currentValue: null,
-                pnl: Number(p.realized_pnl) || null,
-              })).filter((p: { size: number }) => p.size > 0)
+              const kalshi = ksRaw.map((p: Record<string, unknown>) => {
+                // position_fp: positive = YES contracts, negative = NO contracts
+                const positionFp = Number(p.position_fp) || 0
+                return {
+                  platform: 'kalshi' as const,
+                  ticker: (p.ticker || '') as string,
+                  title: (p.ticker || '') as string,
+                  side: positionFp >= 0 ? 'yes' : 'no',
+                  size: Math.abs(positionFp),
+                  avgPrice: 0,
+                  currentValue: Number(p.market_exposure_dollars) || null,
+                  pnl: Number(p.realized_pnl_dollars) || null,
+                }
+              }).filter((p: { size: number }) => p.size >= 1)
 
               const polymarket = pmRaw.map((p: Record<string, unknown>) => ({
                 platform: 'polymarket' as const,
