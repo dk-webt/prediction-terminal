@@ -146,6 +146,16 @@ function BtcPriceGapChart() {
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
       title: '',
     })
+    // Zero baseline reference line
+    series.createPriceLine({
+      price: 0,
+      color: '#555544',
+      lineWidth: 1,
+      lineStyle: LineStyle.Dashed,
+      axisLabelVisible: false,
+      title: '',
+    })
+
     chartRef.current = chart
     seriesRef.current = series
 
