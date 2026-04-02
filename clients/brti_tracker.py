@@ -453,27 +453,26 @@ class BRTITracker:
         """
         Coinbase Advanced Trade WebSocket L2 feed.
         wss://advanced-trade-ws.coinbase.com — requires CDP API key + JWT auth.
-        Falls back to the public Exchange WS if no key is configured.
         """
-        if self.coinbase_api_key and self.coinbase_api_secret:
-            await self._feed_coinbase_advanced()
-        else:
-            log.warning("No Coinbase CDP key — falling back to public Exchange WS")
-            await self._feed_coinbase_public()
+        if not self.coinbase_api_key or not self.coinbase_api_secret:
+            log.error(
+                "Coinbase CDP key not configured — set COINBASE_CDP_API_KEY and "
+                "COINBASE_CDP_API_SECRET in .env. Coinbase feed disabled."
+            )
+            return
 
-    async def _feed_coinbase_advanced(self):
-        """Coinbase Advanced Trade WS with JWT auth (stable, priority connection)."""
+        # Validate the key can generate a JWT before entering the reconnect loop
+        test_jwt = self._coinbase_jwt()
+        if not test_jwt:
+            log.error("Coinbase JWT generation failed — check your CDP key format. Coinbase feed disabled.")
+            return
+
         url = "wss://advanced-trade-ws.coinbase.com"
 
         while self._running:
             try:
                 async with websockets.connect(url, ping_interval=20) as ws:
                     jwt_token = self._coinbase_jwt()
-                    if not jwt_token:
-                        log.error("Coinbase JWT generation failed, falling back to public")
-                        await self._feed_coinbase_public()
-                        return
-
                     sub = {
                         "type": "subscribe",
                         "product_ids": ["BTC-USD"],
@@ -481,7 +480,7 @@ class BRTITracker:
                         "jwt": jwt_token,
                     }
                     await ws.send(json.dumps(sub))
-                    log.info("Coinbase Advanced L2 connected (authenticated)")
+                    log.info("Coinbase L2 connected (authenticated)")
 
                     # JWT expires in 120s — refresh subscription before that
                     last_jwt = time.time()
@@ -506,98 +505,119 @@ class BRTITracker:
 
                         try:
                             msg = json.loads(raw)
-                            self._handle_coinbase_advanced_msg(msg)
+                            self._handle_coinbase_msg(msg)
                         except Exception:
                             log.exception("Coinbase parse error")
             except asyncio.CancelledError:
                 break
             except Exception:
-                log.warning("Coinbase Advanced WS disconnected, reconnecting in 2s")
-                await asyncio.sleep(2)
-
-    async def _feed_coinbase_public(self):
-        """Coinbase Exchange WS — public fallback, no auth needed."""
-        url = "wss://ws-feed.exchange.coinbase.com"
-
-        while self._running:
-            try:
-                async with websockets.connect(url, ping_interval=20) as ws:
-                    sub = {
-                        "type": "subscribe",
-                        "product_ids": ["BTC-USD"],
-                        "channels": ["level2_batch"],
-                    }
-                    await ws.send(json.dumps(sub))
-                    log.info("Coinbase L2 connected (public fallback)")
-
-                    async for raw in ws:
-                        if not self._running:
-                            break
-                        try:
-                            msg = json.loads(raw)
-                            self._handle_coinbase_public_msg(msg)
-                        except Exception:
-                            log.exception("Coinbase parse error")
-            except asyncio.CancelledError:
-                break
-            except Exception:
-                log.warning("Coinbase public WS disconnected, reconnecting in 2s")
+                log.warning("Coinbase WS disconnected, reconnecting in 2s")
                 await asyncio.sleep(2)
 
     def _coinbase_jwt(self) -> str | None:
-        """Generate a JWT for Coinbase CDP auth (ES256) using cryptography lib."""
+        """
+        Generate a JWT for Coinbase CDP auth using cryptography lib.
+        Handles both EC (ES256) and ED25519 (EdDSA) key formats from CDP.
+        """
         try:
-            import base64
-            from cryptography.hazmat.primitives.asymmetric import ec, utils
-            from cryptography.hazmat.primitives import hashes, serialization
+            import base64 as b64
+            from cryptography.hazmat.primitives import serialization
             from cryptography.hazmat.backends import default_backend
 
             now = int(time.time())
 
-            # JWT header
-            header = {"alg": "ES256", "typ": "JWT", "kid": self.coinbase_api_key}
-            # JWT payload
-            payload = {
-                "sub": self.coinbase_api_key,
-                "iss": "cdp",
-                "aud": ["public_websocket_api"],
-                "nbf": now,
-                "exp": now + 120,
-            }
-
             def _b64url(data: bytes) -> str:
-                return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+                return b64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
-            header_b64 = _b64url(json.dumps(header, separators=(",", ":")).encode())
-            payload_b64 = _b64url(json.dumps(payload, separators=(",", ":")).encode())
-            signing_input = f"{header_b64}.{payload_b64}".encode()
-
-            # Load the EC private key (PEM format from CDP)
+            # Normalize the PEM key — .env may have literal \n or be on one line
             secret = self.coinbase_api_secret
-            # CDP secrets may be the raw PEM or may need newlines restored
             if "\\n" in secret:
                 secret = secret.replace("\\n", "\n")
-            if not secret.startswith("-----"):
-                secret = f"-----BEGIN EC PRIVATE KEY-----\n{secret}\n-----END EC PRIVATE KEY-----"
 
-            private_key = serialization.load_pem_private_key(
-                secret.encode(), password=None, backend=default_backend()
-            )
+            # Try loading as-is first (full PEM)
+            key_bytes = secret.encode()
+            private_key = None
 
-            # Sign with ES256 (ECDSA with SHA-256, P-256 curve)
-            der_sig = private_key.sign(signing_input, ec.ECDSA(hashes.SHA256()))
-            # Convert DER signature to raw r||s (64 bytes) for JWT
-            r, s = utils.decode_dss_signature(der_sig)
-            raw_sig = r.to_bytes(32, "big") + s.to_bytes(32, "big")
+            # Try PEM private key (EC or ED25519)
+            for loader in [serialization.load_pem_private_key, serialization.load_der_private_key]:
+                try:
+                    private_key = loader(key_bytes, password=None, backend=default_backend())
+                    break
+                except (ValueError, TypeError):
+                    continue
 
-            sig_b64 = _b64url(raw_sig)
+            if private_key is None:
+                # Maybe it's just the base64 body without PEM headers — try EC then ED25519
+                raw = secret.replace("\n", "").replace(" ", "")
+                for header in [
+                    "-----BEGIN EC PRIVATE KEY-----",
+                    "-----BEGIN PRIVATE KEY-----",
+                ]:
+                    footer = header.replace("BEGIN", "END")
+                    pem = f"{header}\n{raw}\n{footer}"
+                    try:
+                        private_key = serialization.load_pem_private_key(
+                            pem.encode(), password=None, backend=default_backend()
+                        )
+                        break
+                    except (ValueError, TypeError):
+                        continue
+
+            if private_key is None:
+                log.error("Could not parse Coinbase CDP private key — check format in .env")
+                return None
+
+            # Detect key type and choose algorithm
+            from cryptography.hazmat.primitives.asymmetric import ec, ed25519
+
+            if isinstance(private_key, ec.EllipticCurvePrivateKey):
+                alg = "ES256"
+                header = {"alg": alg, "typ": "JWT", "kid": self.coinbase_api_key, "nonce": hex(now)}
+                payload = {
+                    "sub": self.coinbase_api_key,
+                    "iss": "cdp",
+                    "aud": ["public_websocket_api"],
+                    "nbf": now,
+                    "exp": now + 120,
+                }
+                header_b64 = _b64url(json.dumps(header, separators=(",", ":")).encode())
+                payload_b64 = _b64url(json.dumps(payload, separators=(",", ":")).encode())
+                signing_input = f"{header_b64}.{payload_b64}".encode()
+
+                from cryptography.hazmat.primitives import hashes
+                from cryptography.hazmat.primitives.asymmetric import utils as asym_utils
+                der_sig = private_key.sign(signing_input, ec.ECDSA(hashes.SHA256()))
+                r, s = asym_utils.decode_dss_signature(der_sig)
+                raw_sig = r.to_bytes(32, "big") + s.to_bytes(32, "big")
+                sig_b64 = _b64url(raw_sig)
+
+            elif isinstance(private_key, ed25519.Ed25519PrivateKey):
+                alg = "EdDSA"
+                header = {"alg": alg, "typ": "JWT", "kid": self.coinbase_api_key, "nonce": hex(now)}
+                payload = {
+                    "sub": self.coinbase_api_key,
+                    "iss": "cdp",
+                    "aud": ["public_websocket_api"],
+                    "nbf": now,
+                    "exp": now + 120,
+                }
+                header_b64 = _b64url(json.dumps(header, separators=(",", ":")).encode())
+                payload_b64 = _b64url(json.dumps(payload, separators=(",", ":")).encode())
+                signing_input = f"{header_b64}.{payload_b64}".encode()
+
+                raw_sig = private_key.sign(signing_input)
+                sig_b64 = _b64url(raw_sig)
+            else:
+                log.error("Unsupported Coinbase CDP key type: %s", type(private_key).__name__)
+                return None
+
             return f"{header_b64}.{payload_b64}.{sig_b64}"
 
         except Exception:
             log.exception("Coinbase JWT generation failed")
             return None
 
-    def _handle_coinbase_advanced_msg(self, msg: dict):
+    def _handle_coinbase_msg(self, msg: dict):
         """Process Coinbase Advanced Trade level2 snapshot/update messages."""
         channel = msg.get("channel")
         if channel != "l2_data":
@@ -628,42 +648,6 @@ class BRTITracker:
                     target[price] = size
 
         book.last_update = time.time()
-
-    def _handle_coinbase_public_msg(self, msg: dict):
-        """Process Coinbase Exchange L2 snapshot and l2update messages."""
-        mtype = msg.get("type")
-        book = self.books["coinbase"]
-
-        if mtype == "snapshot":
-            book.bids.clear()
-            book.asks.clear()
-            for price_str, size_str in msg.get("bids", []):
-                price = float(price_str)
-                size = float(size_str)
-                if price > 0 and size > 0:
-                    book.bids[price] = size
-            for price_str, size_str in msg.get("asks", []):
-                price = float(price_str)
-                size = float(size_str)
-                if price > 0 and size > 0:
-                    book.asks[price] = size
-            book.last_update = time.time()
-
-        elif mtype == "l2update":
-            for change in msg.get("changes", []):
-                if len(change) < 3:
-                    continue
-                side = change[0]  # "buy" or "sell"
-                price = float(change[1])
-                size = float(change[2])
-                if price <= 0:
-                    continue
-                target = book.bids if side == "buy" else book.asks
-                if size == 0:
-                    target.pop(price, None)
-                else:
-                    target[price] = size
-            book.last_update = time.time()
 
     # ── Exchange Feed: Kraken ────────────────────────────────────────────────
 
