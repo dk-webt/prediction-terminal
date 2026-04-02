@@ -112,7 +112,7 @@ export interface BtcTimeSeriesPoint {
   priceGap: number | null  // coinbase - kraken
   comboA: number | null    // KS yes_bid + PM down_bid
   comboB: number | null    // KS no_bid + PM up_bid
-  coinbase: number | null   // Coinbase BTC-USD (Kalshi/CF Benchmarks source)
+  coinbase: number | null   // BRTI estimate (6-exchange CF Benchmarks replication, Kalshi settlement source)
   chainlink: number | null  // Chainlink BTC/USD via PM RTDS (PM settlement source)
 }
 

@@ -195,7 +195,7 @@ PM_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 PM_CRYPTO_PRICE = "https://polymarket.com/api/crypto/crypto-price"
 PM_USER_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/user"
 PM_RTDS_URL = "wss://ws-live-data.polymarket.com"
-COINBASE_WS_URL = "wss://ws-feed.exchange.coinbase.com"
+# COINBASE_WS_URL removed — replaced by BRTI tracker (multi-exchange)
 
 
 def fetch_pm_strike_price(event_start_time: str, end_time: str) -> float | None:
@@ -447,8 +447,9 @@ class BtcStreamManager:
         self._pm_ws = None               # active market channel WS reference
 
         # Live BTC spot price feeds
-        self._coinbase_price: float | None = None   # Coinbase BTC-USD (Kalshi/CF Benchmarks source)
+        self._coinbase_price: float | None = None   # BRTI estimate (CF Benchmarks replication, Kalshi settlement source)
         self._chainlink_price: float | None = None  # Chainlink BTC/USD via PM RTDS (PM settlement source)
+        self._brti_tracker = None  # BRTITracker instance
 
         # Signals WS loops to reconnect with new tokens/tickers
         self._pm_reconnect = asyncio.Event()
@@ -507,6 +508,8 @@ class BtcStreamManager:
     async def stop(self):
         """Stop all streaming tasks."""
         self._running = False
+        if self._brti_tracker:
+            await self._brti_tracker.stop()
         for t in self._tasks:
             t.cancel()
         for t in self._tasks:
@@ -1030,50 +1033,44 @@ class BtcStreamManager:
                 return
             await asyncio.sleep(self.PM_PING_INTERVAL)
 
-    # ── Live BTC spot prices: Coinbase + Kraken WebSockets ──────────────────
+    # ── Live BTC spot price: BRTI Tracker (replaces single Coinbase ticker) ──
 
     async def _coinbase_ws_loop(self):
-        """Stream live BTC-USD price from Coinbase Exchange WebSocket."""
-        import websockets
+        """
+        Stream live BRTI estimate from multi-exchange order book tracker.
+        Replaces the old single-exchange Coinbase ticker feed with a full
+        CF Benchmarks BRTI replication across 6 constituent exchanges.
+        The value is stored in _coinbase_price for backward compatibility
+        with the existing snapshot/frontend pipeline.
+        """
+        from clients.brti_tracker import BRTITracker
+        from config import COINBASE_CDP_API_KEY, COINBASE_CDP_API_SECRET
 
-        while self._running:
-            try:
-                log.info("Connecting to Coinbase WS for BTC-USD")
-                async with websockets.connect(
-                    COINBASE_WS_URL, ping_interval=None, close_timeout=5,
-                ) as ws:
-                    await ws.send(json.dumps({
-                        "type": "subscribe",
-                        "channels": [{"name": "ticker", "product_ids": ["BTC-USD"]}],
-                    }))
-                    log.info("Coinbase WS subscribed: BTC-USD ticker")
+        def on_brti_update(value, ts):
+            if value and value != self._coinbase_price:
+                self._coinbase_price = value
+                # Schedule push_update on the event loop (callback is sync)
+                asyncio.get_event_loop().call_soon_threadsafe(
+                    asyncio.ensure_future, self._push_update()
+                )
 
-                    while self._running:
-                        try:
-                            raw = await asyncio.wait_for(ws.recv(), timeout=30)
-                        except asyncio.TimeoutError:
-                            log.warning("Coinbase WS inactivity (30s), reconnecting")
-                            break
-                        except websockets.exceptions.ConnectionClosed:
-                            log.info("Coinbase WS closed")
-                            break
+        self._brti_tracker = BRTITracker(
+            coinbase_api_key=COINBASE_CDP_API_KEY,
+            coinbase_api_secret=COINBASE_CDP_API_SECRET,
+            on_update=on_brti_update,
+        )
+        log.info("Starting BRTI tracker (6-exchange CF Benchmarks replication)")
+        await self._brti_tracker.start()
 
-                        try:
-                            msg = json.loads(raw)
-                        except (json.JSONDecodeError, TypeError):
-                            continue
-
-                        if msg.get("type") == "ticker":
-                            price = _safe_float(msg.get("price"))
-                            if price and price != self._coinbase_price:
-                                self._coinbase_price = price
-                                await self._push_update()
-
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                log.warning("Coinbase WS error, reconnecting in 3s: %s", e)
-            await asyncio.sleep(3)
+        # Keep alive until stopped
+        try:
+            while self._running:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            if self._brti_tracker:
+                await self._brti_tracker.stop()
 
     RTDS_PING_INTERVAL = 5  # seconds — RTDS requires PING every 5s
 
