@@ -710,7 +710,7 @@ export default function App() {
                 avgPrice: Number(p.avgPrice) || 0,
                 currentValue: Number(p.currentValue) || null,
                 pnl: Number(p.cashPnl) || null,
-              })).filter((p: { size: number }) => p.size > 0)
+              })).filter((p: { size: number }) => p.size >= 0.01)
 
               const error = [ksErr, pmErr].filter(Boolean).join(' | ') || null
 

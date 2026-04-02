@@ -425,7 +425,7 @@ def get_polymarket_positions() -> dict:
     try:
         resp = requests.get(
             "https://data-api.polymarket.com/positions",
-            params={"user": POLYMARKET_WALLET_ADDRESS, "sizeThreshold": 0},
+            params={"user": POLYMARKET_WALLET_ADDRESS, "sizeThreshold": 1},
             timeout=10,
         )
         if resp.status_code == 200:
