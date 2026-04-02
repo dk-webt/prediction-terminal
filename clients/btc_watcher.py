@@ -1058,22 +1058,27 @@ class BtcStreamManager:
                 if event_type == "price_change":
                     for pc in msg.get("price_changes", []):
                         asset_id = pc.get("asset_id", "")
-                        best_bid = _safe_float(pc.get("best_bid"))
-                        best_ask = _safe_float(pc.get("best_ask"))
+                        # best_bid/best_ask may be absent or null — only use if present
+                        raw_bid = pc.get("best_bid")
+                        raw_ask = pc.get("best_ask")
+                        best_bid = float(raw_bid) if raw_bid is not None else None
+                        best_ask = float(raw_ask) if raw_ask is not None else None
                         updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
 
                 elif event_type == "book" or (not event_type and "bids" in msg):
                     asset_id = msg.get("asset_id", "")
                     bids = msg.get("bids", [])
                     asks = msg.get("asks", [])
-                    best_bid = max((float(b["price"]) for b in bids), default=0.0)
-                    best_ask = min((float(a["price"]) for a in asks), default=0.0)
+                    best_bid = max((float(b["price"]) for b in bids), default=None)
+                    best_ask = min((float(a["price"]) for a in asks), default=None)
                     updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
 
                 elif event_type == "best_bid_ask":
                     asset_id = msg.get("asset_id", "")
-                    best_bid = _safe_float(msg.get("best_bid"))
-                    best_ask = _safe_float(msg.get("best_ask"))
+                    raw_bid = msg.get("best_bid")
+                    raw_ask = msg.get("best_ask")
+                    best_bid = float(raw_bid) if raw_bid is not None else None
+                    best_ask = float(raw_ask) if raw_ask is not None else None
                     updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
 
                 elif event_type == "new_market":
