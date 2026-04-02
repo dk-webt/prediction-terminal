@@ -410,7 +410,7 @@ class BtcStreamManager:
     MIN_PUSH_INTERVAL = 0.1      # seconds — throttle pushes to frontend (10/sec max)
     ROLL_RETRY_INTERVAL = 0.5    # seconds between retries when new contract not ready
     ROLL_MAX_RETRIES = 60        # max retries (~30s max wait for slow platforms)
-    STALE_THRESHOLD = 10         # seconds — log warning when platform data goes stale
+    STALE_THRESHOLD = 5          # seconds — mark platform data as stale
 
     def __init__(self, on_update, on_ks_fill=None, on_ks_order=None,
                  on_pm_fill=None, on_pm_order=None):
@@ -587,6 +587,8 @@ class BtcStreamManager:
                 self._brti_tracker.get_status()["active_exchanges"]
                 if self._brti_tracker else None
             ),
+            "ks_stale": self._ks_stale_logged,
+            "pm_stale": self._pm_stale_logged,
         }
         try:
             await self._on_update(snapshot)

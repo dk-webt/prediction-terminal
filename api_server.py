@@ -428,20 +428,13 @@ async def _ate_check(snapshot: dict):
     if not ks or not pm:
         return
 
-    # Staleness guard — don't trade on old data
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
-    ATE_STALE_THRESHOLD = 10  # seconds
-    for label, ts_key in [("Kalshi", "kalshi_last_update"), ("Polymarket", "polymarket_last_update")]:
-        ts = snapshot.get(ts_key, "")
-        if not ts:
-            return
-        try:
-            age = (now - datetime.fromisoformat(ts)).total_seconds()
-        except (ValueError, TypeError):
-            return
-        if age > ATE_STALE_THRESHOLD:
-            return
+    # Staleness guard — don't trade on old data (uses btc_watcher's staleness flags)
+    if snapshot.get("ks_stale") or snapshot.get("pm_stale"):
+        return
+
+    # Skip during window rolls (contracts are changing)
+    if snapshot.get("rolling"):
+        return
 
     # Get ask prices (cost to enter each leg)
     ks_yes_ask = ks.get("yes_ask", 0) or 0
