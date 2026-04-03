@@ -297,6 +297,22 @@ def prewarm_pm_client():
     return client is not None
 
 
+def prewarm_pm_token(token_id: str):
+    """Pre-cache neg_risk, tick_size, and fee_rate for a PM token_id.
+    Call this when new BTC 15-min contracts are loaded to avoid REST
+    latency on the first ATE execution of each window."""
+    client = _get_pm_client()
+    if not client or not token_id:
+        return
+    try:
+        client.get_neg_risk(token_id)
+        client.get_tick_size(token_id)
+        client.get_fee_rate_bps(token_id)
+        log.info("PM token pre-warmed: %s...", token_id[:20])
+    except Exception as e:
+        log.warning("PM token pre-warm failed for %s...: %s", token_id[:20], e)
+
+
 def _get_pm_client():
     """
     Lazy-init the Polymarket CLOB client.

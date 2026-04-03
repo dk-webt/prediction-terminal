@@ -534,6 +534,10 @@ class BtcStreamManager:
                  len(self._pm_token_ids),
                  self._pm_data.get("floor_strike") if self._pm_data else None)
 
+        # Pre-warm PM token metadata (neg_risk, tick_size, fee_rate) for ATE speed
+        if self._pm_token_ids:
+            asyncio.create_task(self._prewarm_pm_tokens(self._pm_token_ids))
+
         # Push initial snapshot immediately
         await self._push_update(force=True)
 
@@ -693,6 +697,15 @@ class BtcStreamManager:
         except Exception:
             log.exception("FORCE REFRESH: error")
 
+
+    async def _prewarm_pm_tokens(self, token_ids: list[str]):
+        """Pre-cache PM token metadata (neg_risk, tick_size, fee_rate) in background."""
+        try:
+            from clients.executor import prewarm_pm_token
+            for tid in token_ids:
+                await asyncio.to_thread(prewarm_pm_token, tid)
+        except Exception as e:
+            log.warning("PM token pre-warm error: %s", e)
 
     def _mark_ks_recv(self):
         """Mark Kalshi data received — resets stale flag."""
@@ -1582,6 +1595,9 @@ class BtcStreamManager:
                                     self._reset_pm_uptime()
                                     self._mark_pm_recv()
                                     self._pm_user_reconnect.set()
+                                # Pre-warm token metadata for ATE speed
+                                if self._pm_token_ids:
+                                    asyncio.create_task(self._prewarm_pm_tokens(self._pm_token_ids))
                                 await self._push_update(force=True)
 
                         elif label == "ks":
