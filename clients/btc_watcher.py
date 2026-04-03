@@ -448,11 +448,16 @@ class BtcStreamManager:
         self._ks_stale_logged = False    # avoid spamming stale warnings
         self._pm_stale_logged = False
 
-        # PM uptime tracking within current 15-min window
+        # Uptime tracking within current 15-min window (per platform)
         self._pm_window_start: float = 0.0    # monotonic time when window started
         self._pm_live_accum: float = 0.0      # accumulated seconds of live data
         self._pm_last_live_mark: float = 0.0  # last monotonic time we counted as live
         self._pm_is_stale: bool = True        # starts stale until first data arrives
+
+        self._ks_window_start: float = 0.0
+        self._ks_live_accum: float = 0.0
+        self._ks_last_live_mark: float = 0.0
+        self._ks_is_stale: bool = True
 
         # Kalshi WS state
         self._ks_ws = None               # active WS connection reference
@@ -484,6 +489,7 @@ class BtcStreamManager:
 
         if self._kalshi_data and not self._kalshi_data.get("error"):
             self._kalshi_ticker = self._kalshi_data.get("ticker", "")
+            self._reset_ks_uptime()
             self._mark_ks_recv()
 
         if self._pm_data and not self._pm_data.get("error"):
@@ -641,7 +647,12 @@ class BtcStreamManager:
 
     def _mark_ks_recv(self):
         """Mark Kalshi data received — resets stale flag."""
-        self._ks_last_recv = time.monotonic()
+        now = time.monotonic()
+        if not self._ks_is_stale and self._ks_last_live_mark > 0:
+            self._ks_live_accum += now - self._ks_last_live_mark
+        self._ks_last_live_mark = now
+        self._ks_is_stale = False
+        self._ks_last_recv = now
         self._ks_last_update = datetime.now(timezone.utc).isoformat()
         if self._ks_stale_logged:
             log.info("KS RECOVERED: data flowing again after stale period")
@@ -671,6 +682,9 @@ class BtcStreamManager:
                 log.warning("KS STALE: no Kalshi data for %.0fs (ticker=%s)",
                             ks_age, self._kalshi_ticker)
                 self._ks_stale_logged = True
+                if not self._ks_is_stale and self._ks_last_live_mark > 0:
+                    self._ks_live_accum += self._ks_last_recv - self._ks_last_live_mark
+                self._ks_is_stale = True
         if self._pm_last_recv > 0:
             pm_age = now - self._pm_last_recv
             if pm_age > self.STALE_THRESHOLD and not self._pm_stale_logged:
@@ -703,6 +717,26 @@ class BtcStreamManager:
         self._pm_last_live_mark = 0.0
         self._pm_is_stale = True
 
+    def _get_ks_uptime_pct(self) -> float | None:
+        """Compute KS stream uptime % for current window. Returns 0-100 or None."""
+        if self._ks_window_start <= 0:
+            return None
+        now = time.monotonic()
+        elapsed = now - self._ks_window_start
+        if elapsed <= 0:
+            return None
+        live = self._ks_live_accum
+        if not self._ks_is_stale and self._ks_last_live_mark > 0:
+            live += now - self._ks_last_live_mark
+        return min(100.0, (live / elapsed) * 100.0)
+
+    def _reset_ks_uptime(self):
+        """Reset KS uptime counters for a new 15-min window."""
+        self._ks_window_start = time.monotonic()
+        self._ks_live_accum = 0.0
+        self._ks_last_live_mark = 0.0
+        self._ks_is_stale = True
+
     async def _push_update(self, force: bool = False):
         """Build merged snapshot and send to callback (throttled)."""
         now = asyncio.get_event_loop().time()
@@ -734,6 +768,7 @@ class BtcStreamManager:
             ),
             "ks_stale": self._ks_stale_logged,
             "pm_stale": self._pm_stale_logged,
+            "ks_uptime_pct": self._get_ks_uptime_pct(),
             "pm_uptime_pct": self._get_pm_uptime_pct(),
         }
         try:
@@ -1499,6 +1534,7 @@ class BtcStreamManager:
             self._pm_token_ids = []
             self._rolling = True
             self._reset_pm_uptime()
+            self._reset_ks_uptime()
 
             pm_ok = False
             ks_ok = False

@@ -284,6 +284,10 @@ function BtcDetail({ snap }: { snap: BtcSnapshot }) {
       </Val>
 
       <div style={{ marginTop: 16, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+        <Label>KS STREAM UPTIME</Label>
+        <div className="detail-value" style={{ color: (snap.ks_uptime_pct ?? 0) >= 90 ? 'var(--green)' : (snap.ks_uptime_pct ?? 0) >= 50 ? 'var(--amber)' : 'var(--red)' }}>
+          {snap.ks_uptime_pct != null ? `${snap.ks_uptime_pct.toFixed(1)}%` : '--'}
+        </div>
         <Label>PM STREAM UPTIME</Label>
         <div className="detail-value" style={{ color: (snap.pm_uptime_pct ?? 0) >= 90 ? 'var(--green)' : (snap.pm_uptime_pct ?? 0) >= 50 ? 'var(--amber)' : 'var(--red)' }}>
           {snap.pm_uptime_pct != null ? `${snap.pm_uptime_pct.toFixed(1)}%` : '--'}
