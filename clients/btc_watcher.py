@@ -966,26 +966,38 @@ class BtcStreamManager:
             if event_type == "price_change":
                 for pc in msg.get("price_changes", []):
                     asset_id = pc.get("asset_id", "")
+                    if asset_id not in self._pm_token_ids:
+                        continue  # stale token from old contract
                     raw_bid = pc.get("best_bid")
                     raw_ask = pc.get("best_ask")
                     best_bid = float(raw_bid) if raw_bid is not None else None
                     best_ask = float(raw_ask) if raw_ask is not None else None
+                    log.debug("PM WS price_change: asset=%s..%s bid=%s ask=%s",
+                              asset_id[:8], asset_id[-4:], best_bid, best_ask)
                     updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
 
             elif event_type == "book" or (not event_type and "bids" in msg):
                 asset_id = msg.get("asset_id", "")
+                if asset_id not in self._pm_token_ids:
+                    continue  # stale token from old contract
                 bids = msg.get("bids", [])
                 asks = msg.get("asks", [])
                 best_bid = max((float(b["price"]) for b in bids), default=None)
                 best_ask = min((float(a["price"]) for a in asks), default=None)
+                log.debug("PM WS book: asset=%s..%s bid=%s ask=%s bids=%d asks=%d",
+                          asset_id[:8], asset_id[-4:], best_bid, best_ask, len(bids), len(asks))
                 updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
 
             elif event_type == "best_bid_ask":
                 asset_id = msg.get("asset_id", "")
+                if asset_id not in self._pm_token_ids:
+                    continue  # stale token from old contract
                 raw_bid = msg.get("best_bid")
                 raw_ask = msg.get("best_ask")
                 best_bid = float(raw_bid) if raw_bid is not None else None
                 best_ask = float(raw_ask) if raw_ask is not None else None
+                log.debug("PM WS best_bid_ask: asset=%s..%s bid=%s ask=%s",
+                          asset_id[:8], asset_id[-4:], best_bid, best_ask)
                 updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
 
             elif event_type == "new_market":
@@ -1056,6 +1068,8 @@ class BtcStreamManager:
                 changed = False
                 if len(results) >= 1 and len(tokens) >= 1:
                     bid, ask = results[0]
+                    log.debug("PM REST OB up: bid=%s ask=%s (was bid=%s ask=%s)",
+                              bid, ask, self._pm_data.get("up_bid"), self._pm_data.get("up_ask"))
                     if bid > 0 and bid != self._pm_data.get("up_bid"):
                         self._pm_data["up_bid"] = bid
                         changed = True
