@@ -478,6 +478,13 @@ class BtcStreamManager:
         self._ks_last_live_mark: float = 0.0
         self._ks_is_stale: bool = True
 
+        # Live orderbook mirrors — full depth from WS, used by ATE
+        # KS: {price: size} for yes and no sides
+        self._ks_ob_yes: dict[float, float] = {}   # yes bids (price -> size)
+        self._ks_ob_no: dict[float, float] = {}    # no bids (price -> size)
+        # PM: {price: size} for each token's bids and asks
+        self._pm_ob: dict[str, dict] = {}  # token_id -> {"bids": {price: size}, "asks": {price: size}}
+
         # Kalshi WS state — managed by RedundantWSPool
         self._ks_pool = None             # RedundantWSPool instance
 
@@ -917,12 +924,16 @@ class BtcStreamManager:
             self._kalshi_data["open_interest"] = oi
 
     def _apply_kalshi_orderbook_snapshot(self, data: dict):
-        """Apply a Kalshi orderbook snapshot."""
+        """Apply a Kalshi orderbook snapshot — full book reset."""
         if not self._kalshi_data or self._kalshi_data.get("error"):
             return
 
         yes_levels = data.get("yes_dollars_fp", [])
         no_levels = data.get("no_dollars_fp", [])
+
+        # Full reset of orderbook mirror
+        self._ks_ob_yes = {float(p): float(s) for p, s in yes_levels if float(s) > 0}
+        self._ks_ob_no = {float(p): float(s) for p, s in no_levels if float(s) > 0}
 
         if yes_levels:
             yes_bid = _safe_float(yes_levels[-1][0])
@@ -945,17 +956,24 @@ class BtcStreamManager:
         if not price or not side:
             return
 
-        # A delta with positive size means new/increased level,
-        # negative means removed/decreased. For best bid/ask we
-        # just track the price level if it's better than current.
-        if side == "yes":
-            if delta > 0 and price >= self._kalshi_data.get("yes_bid", 0):
-                self._kalshi_data["yes_bid"] = price
-                self._kalshi_data["no_ask"] = round(1.0 - price, 4)
-        elif side == "no":
-            if delta > 0 and price >= self._kalshi_data.get("no_bid", 0):
-                self._kalshi_data["no_bid"] = price
-                self._kalshi_data["yes_ask"] = round(1.0 - price, 4)
+        # Update orderbook mirror
+        ob = self._ks_ob_yes if side == "yes" else self._ks_ob_no
+        current = ob.get(price, 0.0)
+        new_size = current + delta
+        if new_size > 0:
+            ob[price] = new_size
+        else:
+            ob.pop(price, None)
+
+        # Update best bid/ask from mirror
+        if side == "yes" and ob:
+            best = max(ob.keys())
+            self._kalshi_data["yes_bid"] = best
+            self._kalshi_data["no_ask"] = round(1.0 - best, 4)
+        elif side == "no" and ob:
+            best = max(ob.keys())
+            self._kalshi_data["no_bid"] = best
+            self._kalshi_data["yes_ask"] = round(1.0 - best, 4)
 
     # ── Polymarket: message handler (fed by RedundantWSPool) ─────────────────
 
@@ -1001,6 +1019,11 @@ class BtcStreamManager:
                     continue  # stale token from old contract
                 bids = msg.get("bids", [])
                 asks = msg.get("asks", [])
+                # Update full orderbook mirror
+                self._pm_ob[asset_id] = {
+                    "bids": {float(b["price"]): float(b["size"]) for b in bids if float(b["size"]) > 0},
+                    "asks": {float(a["price"]): float(a["size"]) for a in asks if float(a["size"]) > 0},
+                }
                 best_bid = max((float(b["price"]) for b in bids), default=None)
                 best_ask = min((float(a["price"]) for a in asks), default=None)
                 log.debug("PM WS book: asset=%s..%s bid=%s ask=%s bids=%d asks=%d",
@@ -1058,6 +1081,35 @@ class BtcStreamManager:
                 changed = True
 
         return changed
+
+    def get_orderbooks(self) -> dict:
+        """Return live orderbook mirrors for ATE liquidity checks.
+        Returns dict with 'kalshi' and 'polymarket' keys, each containing
+        the orderbook in the same format as the REST fetch functions.
+        """
+        # KS: convert to format matching fetch_kalshi_orderbook() output
+        ks_ob = {}
+        if self._ks_ob_yes:
+            # yes_dollars: [[price, size], ...] sorted ascending
+            ks_ob["yes_dollars"] = sorted(
+                ([p, s] for p, s in self._ks_ob_yes.items()), key=lambda x: x[0])
+        if self._ks_ob_no:
+            ks_ob["no_dollars"] = sorted(
+                ([p, s] for p, s in self._ks_ob_no.items()), key=lambda x: x[0])
+
+        # PM: convert to format matching fetch_polymarket_orderbook() output
+        pm_obs = {}
+        for token_id, book in self._pm_ob.items():
+            pm_obs[token_id] = {
+                "bids": sorted(
+                    [{"price": str(p), "size": str(s)} for p, s in book.get("bids", {}).items()],
+                    key=lambda x: float(x["price"]), reverse=True),
+                "asks": sorted(
+                    [{"price": str(p), "size": str(s)} for p, s in book.get("asks", {}).items()],
+                    key=lambda x: float(x["price"])),
+            }
+
+        return {"kalshi": ks_ob, "polymarket": pm_obs}
 
     PM_OB_REFRESH_INTERVAL = 5  # seconds — periodic REST orderbook refresh
 
@@ -1445,6 +1497,9 @@ class BtcStreamManager:
             old_pm_tokens = list(self._pm_token_ids)
             self._pm_data = None
             self._pm_token_ids = []
+            self._pm_ob.clear()
+            self._ks_ob_yes.clear()
+            self._ks_ob_no.clear()
             self._rolling = True
 
             pm_ok = False

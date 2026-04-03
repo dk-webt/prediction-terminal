@@ -572,8 +572,7 @@ async def _ate_check(snapshot: dict):
         ks_side, pm_side = "no", "up"
         label = "KS NO + PM UP"
 
-    # Pre-execution liquidity check — verify depth on both sides
-    ks_ticker = ks.get("ticker", "")
+    # Pre-execution liquidity check — use live WS orderbook mirrors (zero latency)
     pm_token_ids = pm.get("token_ids", [])
     if pm_side == "up":
         pm_token_id = pm_token_ids[0] if len(pm_token_ids) > 0 else ""
@@ -581,11 +580,9 @@ async def _ate_check(snapshot: dict):
         pm_token_id = pm_token_ids[1] if len(pm_token_ids) > 1 else ""
 
     try:
-        from clients.executor import fetch_kalshi_orderbook, fetch_polymarket_orderbook
-        ks_ob, pm_ob = await asyncio.gather(
-            asyncio.to_thread(fetch_kalshi_orderbook, ks_ticker),
-            asyncio.to_thread(fetch_polymarket_orderbook, pm_token_id),
-        )
+        obs = _btc_stream.get_orderbooks() if _btc_stream else {"kalshi": {}, "polymarket": {}}
+        ks_ob = obs.get("kalshi", {})
+        pm_ob = obs.get("polymarket", {}).get(pm_token_id, {})
 
         # KS: yes_ask levels = inverted no_dollars bids; no_ask levels = inverted yes_dollars bids
         if ks_side == "yes":
@@ -600,18 +597,18 @@ async def _ate_check(snapshot: dict):
         pm_ask_levels = [(float(a["price"]), float(a["size"])) for a in pm_ob.get("asks", [])]
         pm_ask_levels.sort()
 
-        ks_cap = (ks_yes_ask if ks_side == "yes" else ks_no_ask) + 0.02
-        pm_cap = (pm_down_ask if pm_side == "down" else pm_up_ask) + 0.02
+        ks_cap = min((ks_yes_ask if ks_side == "yes" else ks_no_ask) + 0.02, 0.99)
+        pm_cap = min((pm_down_ask if pm_side == "down" else pm_up_ask) + 0.02, 0.99)
 
         ks_depth_ok, ks_avail = _check_depth(ks_ask_levels, ATE_ORDER_COUNT, ks_cap)
         pm_depth_ok, pm_avail = _check_depth(pm_ask_levels, ATE_ORDER_COUNT, pm_cap)
 
-        log.info("ATE liquidity: KS %s %d/%d @ cap %.2f | PM %s %d/%d @ cap %.2f",
-                 "OK" if ks_depth_ok else "THIN", ks_avail, ATE_ORDER_COUNT, ks_cap,
-                 "OK" if pm_depth_ok else "THIN", pm_avail, ATE_ORDER_COUNT, pm_cap)
+        log.info("ATE liquidity (WS mirror): KS %s %d/%d @ cap %.2f (%d levels) | PM %s %d/%d @ cap %.2f (%d levels)",
+                 "OK" if ks_depth_ok else "THIN", ks_avail, ATE_ORDER_COUNT, ks_cap, len(ks_ask_levels),
+                 "OK" if pm_depth_ok else "THIN", pm_avail, ATE_ORDER_COUNT, pm_cap, len(pm_ask_levels))
 
         if not ks_depth_ok or not pm_depth_ok:
-            # Phase 4: adaptive sizing — use min available
+            # Adaptive sizing — use min available
             actual_count = min(ks_avail, pm_avail, ATE_ORDER_COUNT)
             if actual_count < ATE_MIN_COUNT:
                 log.warning("ATE: insufficient liquidity — KS: %d, PM: %d, need >= %d — skipping",
