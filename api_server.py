@@ -1069,7 +1069,7 @@ async def _execute_order(websocket, order_id: str, pending_orders: dict):
                              ks_data.get("yes_ask"), ks_data.get("no_ask"),
                              ks_data.get("yes_bid"), ks_data.get("no_bid"))
                     if best_ask > 0:
-                        ks_price = round(best_ask + 0.02, 2)
+                        ks_price = min(round(best_ask + 0.02, 2), 0.99)
                         log.info("ORDER %s: market cap: best_ask=%.2f cap=%.2f",
                                  order_id, best_ask, ks_price)
                     else:
@@ -1098,7 +1098,7 @@ async def _execute_order(websocket, order_id: str, pending_orders: dict):
                     else:
                         best_ask = pm_data.get("down_ask", 0)
                     if best_ask > 0:
-                        pm_price = round(best_ask + 0.02, 2)
+                        pm_price = min(round(best_ask + 0.02, 2), 0.99)
                         log.info("ORDER %s: PM market cap: best_ask=%.2f cap=%.2f",
                                  order_id, best_ask, pm_price)
             result = await asyncio.to_thread(
