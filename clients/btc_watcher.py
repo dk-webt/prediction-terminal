@@ -13,6 +13,7 @@ Streaming: BtcStreamManager connects to both platforms via WebSocket:
 import asyncio
 import base64
 import calendar
+import hashlib
 import json
 import logging
 import time
@@ -413,7 +414,9 @@ class BtcStreamManager:
     """
 
     PM_PING_INTERVAL = 8         # seconds between PM WS PING heartbeats
-    PM_INACTIVITY_TIMEOUT = 120  # seconds before force-reconnect
+    PM_INACTIVITY_TIMEOUT = 20   # seconds before force-reconnect (>2 PING cycles)
+    PM_RECONNECT_BASE = 0.5      # seconds — initial reconnect delay (exponential backoff)
+    PM_RECONNECT_MAX = 5         # seconds — max reconnect delay
     MIN_PUSH_INTERVAL = 0.1      # seconds — throttle pushes to frontend (10/sec max)
     ROLL_RETRY_INTERVAL = 0.5    # seconds between retries when new contract not ready
     ROLL_MAX_RETRIES = 60        # max retries (~30s max wait for slow platforms)
@@ -456,8 +459,8 @@ class BtcStreamManager:
         self._ks_sids: dict[str, int] = {}  # channel_name -> subscription ID
         self._ks_cmd_id: int = 0         # incrementing command ID for KS WS
 
-        # Polymarket WS state
-        self._pm_ws = None               # active market channel WS reference
+        # Polymarket WS state — managed by RedundantWSPool
+        self._pm_pool = None             # RedundantWSPool instance
 
         # Live BTC spot price feeds
         self._brti_price: float | None = None   # BRTI estimate (CF Benchmarks replication, Kalshi settlement source)
@@ -465,7 +468,6 @@ class BtcStreamManager:
         self._brti_tracker = None  # BRTITracker instance
 
         # Signals WS loops to reconnect with new tokens/tickers
-        self._pm_reconnect = asyncio.Event()
         self._pm_user_reconnect = asyncio.Event()  # separate for user channel
         self._ks_reconnect = asyncio.Event()
 
@@ -506,7 +508,27 @@ class BtcStreamManager:
         else:
             log.warning("Kalshi RSA keys not configured — no Kalshi streaming available")
 
-        self._tasks.append(asyncio.create_task(self._pm_ws_loop()))
+        # PM Market WS — redundant connection pool
+        from clients.ws_pool import RedundantWSPool, WSPoolConfig
+        self._pm_pool = RedundantWSPool(WSPoolConfig(
+            name="pm_market",
+            url=PM_WS_URL,
+            pool_size=2,
+            subscribe_msgs=lambda: [json.dumps({
+                "assets_ids": list(self._pm_token_ids),
+                "type": "market",
+                "custom_feature_enabled": True,
+            })],
+            ping_text="PING",
+            ping_interval=self.PM_PING_INTERVAL,
+            recv_timeout=self.PM_INACTIVITY_TIMEOUT,
+            reconnect_base=self.PM_RECONNECT_BASE,
+            reconnect_max=self.PM_RECONNECT_MAX,
+            on_message=self._handle_pm_market_msg,
+            dedup_key=lambda raw: None if raw == "PONG" else hashlib.md5(
+                raw.encode(), usedforsecurity=False).hexdigest(),
+        ))
+        await self._pm_pool.start()
         self._tasks.append(asyncio.create_task(self._pm_ob_refresh_loop()))
         self._tasks.append(asyncio.create_task(self._coinbase_ws_loop()))
         self._tasks.append(asyncio.create_task(self._rtds_ws_loop()))
@@ -523,6 +545,8 @@ class BtcStreamManager:
     async def stop(self):
         """Stop all streaming tasks."""
         self._running = False
+        if self._pm_pool:
+            await self._pm_pool.stop()
         if self._brti_tracker:
             await self._brti_tracker.stop()
         for t in self._tasks:
@@ -582,16 +606,20 @@ class BtcStreamManager:
                 self._mark_pm_recv()
                 log.info("FORCE REFRESH: PM updated — slug=%s tokens=%d",
                          self._current_slug, len(self._pm_token_ids))
-                if hard:
-                    log.info("FORCE REFRESH: PM hard reconnect")
-                    self._pm_reconnect.set()
-                else:
-                    swapped = await self._pm_swap_tokens(old_pm_tokens, self._pm_token_ids)
-                    if not swapped:
-                        log.info("FORCE REFRESH: PM in-place swap failed, reconnecting WS")
-                        self._pm_reconnect.set()
-                    else:
-                        log.info("FORCE REFRESH: PM tokens swapped in-place")
+                if hard and self._pm_pool:
+                    log.info("FORCE REFRESH: PM hard reconnect (pool restart)")
+                    await self._pm_pool.stop()
+                    await self._pm_pool.start()
+                elif self._pm_pool:
+                    await self._pm_pool.swap_subscriptions(
+                        new_sub_fn=lambda: [json.dumps({
+                            "assets_ids": list(self._pm_token_ids),
+                            "type": "market",
+                            "custom_feature_enabled": True,
+                        })],
+                        unsub_msgs=[json.dumps({"operation": "unsubscribe", "assets_ids": old_pm_tokens})] if old_pm_tokens else None,
+                    )
+                    log.info("FORCE REFRESH: PM pool subscriptions swapped")
                 # Always reconnect user channel (condition_id may have changed)
                 self._pm_user_reconnect.set()
             elif isinstance(pm_data, Exception):
@@ -995,139 +1023,65 @@ class BtcStreamManager:
             log.warning("KS update_subscription failed: %s", e)
             return False
 
-    # ── Polymarket: WebSocket streaming ───────────────────────────────────────
+    # ── Polymarket: message handler (fed by RedundantWSPool) ─────────────────
 
-    async def _pm_ws_loop(self):
-        """
-        Connect to Polymarket CLOB WebSocket and stream live price updates.
-        Reconnects automatically on failure.
-        """
-        import websockets
-
-        while self._running:
-            if not self._pm_token_ids:
-                await asyncio.sleep(5)
-                continue
-
-            try:
-                # Snapshot token IDs at connect time to detect rolls
-                connected_tokens = list(self._pm_token_ids)
-                log.info("Connecting to Polymarket WS for tokens: %s",
-                         [t[:20] + "..." for t in connected_tokens])
-
-                self._pm_reconnect.clear()
-
-                async with websockets.connect(
-                    PM_WS_URL,
-                    ping_interval=None,
-                    ping_timeout=None,
-                    close_timeout=5,
-                ) as ws:
-                    self._pm_ws = ws
-                    sub_msg = json.dumps({
-                        "assets_ids": connected_tokens,
-                        "type": "market",
-                        "custom_feature_enabled": True,
-                    })
-                    await ws.send(sub_msg)
-                    log.info("Subscribed to PM WS")
-
-                    recv_task = asyncio.create_task(self._pm_recv_loop(ws))
-                    ping_task = asyncio.create_task(self._pm_ping_loop(ws))
-                    roll_task = asyncio.create_task(self._pm_reconnect.wait())
-
-                    done, pending = await asyncio.wait(
-                        [recv_task, ping_task, roll_task],
-                        return_when=asyncio.FIRST_COMPLETED,
-                    )
-                    for t in pending:
-                        t.cancel()
-                    if roll_task in done:
-                        log.info("PM WS reconnecting for new window tokens")
-                    else:
-                        for t in done:
-                            t.result()
-
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                log.warning("PM WS error, reconnecting in 3s: %s", e)
-                await asyncio.sleep(3)
-            finally:
-                self._pm_ws = None
-
-    async def _pm_recv_loop(self, ws):
-        """Receive messages from PM WS and update prices."""
-        import websockets
-        while self._running:
-            try:
-                raw = await asyncio.wait_for(
-                    ws.recv(), timeout=self.PM_INACTIVITY_TIMEOUT
-                )
-            except asyncio.TimeoutError:
-                log.warning("PM WS inactivity timeout, forcing reconnect")
-                return
-            except websockets.exceptions.ConnectionClosed:
-                log.info("PM WS connection closed cleanly")
-                return
-
-            if raw == "PONG":
-                # PONG confirms the connection is alive
-                self._mark_pm_recv()
-                continue
-
-            try:
-                parsed = json.loads(raw)
-            except (json.JSONDecodeError, TypeError):
-                continue
-
-            # Any valid WS message means the connection is alive
+    async def _handle_pm_market_msg(self, raw: str):
+        """Handle a deduplicated PM market WS message from the pool."""
+        if raw == "PONG":
             self._mark_pm_recv()
+            return
 
-            messages = parsed if isinstance(parsed, list) else [parsed]
-            updated = False
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return
 
-            for msg in messages:
-                if not isinstance(msg, dict):
-                    continue
+        # Any valid WS message means the connection is alive
+        self._mark_pm_recv()
 
-                event_type = msg.get("event_type", "")
+        messages = parsed if isinstance(parsed, list) else [parsed]
+        updated = False
 
-                if event_type == "price_change":
-                    for pc in msg.get("price_changes", []):
-                        asset_id = pc.get("asset_id", "")
-                        # best_bid/best_ask may be absent or null — only use if present
-                        raw_bid = pc.get("best_bid")
-                        raw_ask = pc.get("best_ask")
-                        best_bid = float(raw_bid) if raw_bid is not None else None
-                        best_ask = float(raw_ask) if raw_ask is not None else None
-                        updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
 
-                elif event_type == "book" or (not event_type and "bids" in msg):
-                    asset_id = msg.get("asset_id", "")
-                    bids = msg.get("bids", [])
-                    asks = msg.get("asks", [])
-                    best_bid = max((float(b["price"]) for b in bids), default=None)
-                    best_ask = min((float(a["price"]) for a in asks), default=None)
-                    updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
+            event_type = msg.get("event_type", "")
 
-                elif event_type == "best_bid_ask":
-                    asset_id = msg.get("asset_id", "")
-                    raw_bid = msg.get("best_bid")
-                    raw_ask = msg.get("best_ask")
+            if event_type == "price_change":
+                for pc in msg.get("price_changes", []):
+                    asset_id = pc.get("asset_id", "")
+                    raw_bid = pc.get("best_bid")
+                    raw_ask = pc.get("best_ask")
                     best_bid = float(raw_bid) if raw_bid is not None else None
                     best_ask = float(raw_ask) if raw_ask is not None else None
                     updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
 
-                elif event_type == "new_market":
-                    log.info("PM new_market: slug=%s id=%s", msg.get("slug", ""), msg.get("id", ""))
+            elif event_type == "book" or (not event_type and "bids" in msg):
+                asset_id = msg.get("asset_id", "")
+                bids = msg.get("bids", [])
+                asks = msg.get("asks", [])
+                best_bid = max((float(b["price"]) for b in bids), default=None)
+                best_ask = min((float(a["price"]) for a in asks), default=None)
+                updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
 
-                elif event_type == "market_resolved":
-                    log.info("PM market_resolved: id=%s winner=%s",
-                             msg.get("id", ""), msg.get("winning_outcome", ""))
+            elif event_type == "best_bid_ask":
+                asset_id = msg.get("asset_id", "")
+                raw_bid = msg.get("best_bid")
+                raw_ask = msg.get("best_ask")
+                best_bid = float(raw_bid) if raw_bid is not None else None
+                best_ask = float(raw_ask) if raw_ask is not None else None
+                updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
 
-            if updated:
-                await self._push_update()
+            elif event_type == "new_market":
+                log.info("PM new_market: slug=%s id=%s", msg.get("slug", ""), msg.get("id", ""))
+
+            elif event_type == "market_resolved":
+                log.info("PM market_resolved: id=%s winner=%s",
+                         msg.get("id", ""), msg.get("winning_outcome", ""))
+
+        if updated:
+            await self._push_update()
 
     def _apply_pm_price(self, asset_id: str, best_bid: float, best_ask: float) -> bool:
         """Apply a PM price update. Returns True if data actually changed.
@@ -1210,15 +1164,6 @@ class BtcStreamManager:
                 raise
             except Exception as e:
                 log.debug("PM OB refresh error: %s", e)
-
-    async def _pm_ping_loop(self, ws):
-        """Send application-level PING to PM WS every 8 seconds."""
-        while self._running:
-            try:
-                await ws.send("PING")
-            except Exception:
-                return
-            await asyncio.sleep(self.PM_PING_INTERVAL)
 
     # ── Live BTC spot price: BRTI Tracker (replaces single Coinbase ticker) ──
 
@@ -1357,31 +1302,6 @@ class BtcStreamManager:
             except Exception:
                 return
             await asyncio.sleep(self.RTDS_PING_INTERVAL)
-
-    # ── Polymarket: dynamic subscription updates ────────────────────────────
-
-    async def _pm_swap_tokens(self, old_tokens: list[str], new_tokens: list[str]) -> bool:
-        """
-        Swap PM market channel subscription in-place.
-        Subscribe to new tokens, unsubscribe old ones. No server acknowledgment.
-        Returns True on success, False if fallback reconnect needed.
-        """
-        ws = self._pm_ws
-        if not ws:
-            log.warning("PM swap_tokens: no active WS connection")
-            return False
-
-        try:
-            if new_tokens:
-                await ws.send(json.dumps({"operation": "subscribe", "assets_ids": new_tokens}))
-                log.info("PM WS dynamic subscribe: %s", [t[:20] + "..." for t in new_tokens])
-            if old_tokens:
-                await ws.send(json.dumps({"operation": "unsubscribe", "assets_ids": old_tokens}))
-                log.info("PM WS dynamic unsubscribe: %s", [t[:20] + "..." for t in old_tokens])
-            return True
-        except Exception as e:
-            log.warning("PM WS swap_tokens failed: %s", e)
-            return False
 
     # ── Polymarket: user channel (fill/order tracking) ────────────────────────
 
@@ -1659,12 +1579,15 @@ class BtcStreamManager:
                 log.info("ROLL DONE: pm_ok=%s ks_ok=%s total=%.0fms", pm_ok, ks_ok, roll_elapsed * 1000)
 
             # Update WS subscriptions in-place, fall back to reconnect
-            if pm_ok:
-                # Try dynamic swap on market channel
-                swapped = await self._pm_swap_tokens(old_pm_tokens, self._pm_token_ids)
-                if not swapped:
-                    log.info("PM WS swap failed, falling back to reconnect")
-                    self._pm_reconnect.set()
+            if pm_ok and self._pm_pool:
+                await self._pm_pool.swap_subscriptions(
+                    new_sub_fn=lambda: [json.dumps({
+                        "assets_ids": list(self._pm_token_ids),
+                        "type": "market",
+                        "custom_feature_enabled": True,
+                    })],
+                    unsub_msgs=[json.dumps({"operation": "unsubscribe", "assets_ids": old_pm_tokens})] if old_pm_tokens else None,
+                )
                 # Always reconnect user channel (condition_id changed)
                 self._pm_user_reconnect.set()
             if ks_ok:
