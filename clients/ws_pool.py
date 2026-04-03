@@ -132,9 +132,10 @@ class RedundantWSPool:
     ):
         """
         Hot-swap subscriptions on all live connections.
-        Updates stored subscribe_msgs so future reconnects use the new value.
+        Does NOT update stored subscribe_msgs — the initial lambda already
+        reads token IDs by reference, so reconnects pick up new values
+        with the correct initial format (\"type\": \"market\").
         """
-        self._config.subscribe_msgs = new_sub_fn
         for conn in self._connections:
             if conn.ws and conn.connected:
                 try:

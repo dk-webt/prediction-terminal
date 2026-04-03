@@ -640,7 +640,7 @@ class BtcStreamManager:
                     await self._pm_pool.swap_subscriptions(
                         new_sub_fn=lambda: [json.dumps({
                             "assets_ids": list(self._pm_token_ids),
-                            "type": "market",
+                            "operation": "subscribe",
                             "custom_feature_enabled": True,
                         })],
                         unsub_msgs=[json.dumps({"operation": "unsubscribe", "assets_ids": old_pm_tokens})] if old_pm_tokens else None,
@@ -1513,7 +1513,7 @@ class BtcStreamManager:
                 await self._pm_pool.swap_subscriptions(
                     new_sub_fn=lambda: [json.dumps({
                         "assets_ids": list(self._pm_token_ids),
-                        "type": "market",
+                        "operation": "subscribe",
                         "custom_feature_enabled": True,
                     })],
                     unsub_msgs=[json.dumps({"operation": "unsubscribe", "assets_ids": old_pm_tokens})] if old_pm_tokens else None,
