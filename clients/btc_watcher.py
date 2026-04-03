@@ -445,6 +445,12 @@ class BtcStreamManager:
         self._ks_stale_logged = False    # avoid spamming stale warnings
         self._pm_stale_logged = False
 
+        # PM uptime tracking within current 15-min window
+        self._pm_window_start: float = 0.0    # monotonic time when window started
+        self._pm_live_accum: float = 0.0      # accumulated seconds of live data
+        self._pm_last_live_mark: float = 0.0  # last monotonic time we counted as live
+        self._pm_is_stale: bool = True        # starts stale until first data arrives
+
         # Kalshi WS state
         self._ks_ws = None               # active WS connection reference
         self._ks_sids: dict[str, int] = {}  # channel_name -> subscription ID
@@ -482,6 +488,7 @@ class BtcStreamManager:
             self._pm_token_ids = self._pm_data.get("token_ids", [])
             self._pm_condition_id = self._pm_data.get("condition_id", "")
             self._current_slug = self._pm_data.get("slug", "")
+            self._reset_pm_uptime()
             self._mark_pm_recv()
 
         log.info("INIT: snapshot in %.0fms | slug=%s ks_ticker=%s pm_tokens=%d pm_strike=%s",
@@ -614,7 +621,12 @@ class BtcStreamManager:
 
     def _mark_pm_recv(self):
         """Mark Polymarket data received — resets stale flag."""
-        self._pm_last_recv = time.monotonic()
+        now = time.monotonic()
+        if not self._pm_is_stale and self._pm_last_live_mark > 0:
+            self._pm_live_accum += now - self._pm_last_live_mark
+        self._pm_last_live_mark = now
+        self._pm_is_stale = False
+        self._pm_last_recv = now
         self._pm_last_update = datetime.now(timezone.utc).isoformat()
         if self._pm_stale_logged:
             log.info("PM RECOVERED: data flowing again after stale period")
@@ -637,6 +649,31 @@ class BtcStreamManager:
                 log.warning("PM STALE: no Polymarket data for %.0fs (slug=%s)",
                             pm_age, self._current_slug)
                 self._pm_stale_logged = True
+                # Flush remaining live time up to last recv
+                if not self._pm_is_stale and self._pm_last_live_mark > 0:
+                    self._pm_live_accum += self._pm_last_recv - self._pm_last_live_mark
+                self._pm_is_stale = True
+
+    def _get_pm_uptime_pct(self) -> float | None:
+        """Compute PM stream uptime % for current window. Returns 0-100 or None."""
+        if self._pm_window_start <= 0:
+            return None
+        now = time.monotonic()
+        elapsed = now - self._pm_window_start
+        if elapsed <= 0:
+            return None
+        # Include current live stretch if not stale
+        live = self._pm_live_accum
+        if not self._pm_is_stale and self._pm_last_live_mark > 0:
+            live += now - self._pm_last_live_mark
+        return min(100.0, (live / elapsed) * 100.0)
+
+    def _reset_pm_uptime(self):
+        """Reset PM uptime counters for a new 15-min window."""
+        self._pm_window_start = time.monotonic()
+        self._pm_live_accum = 0.0
+        self._pm_last_live_mark = 0.0
+        self._pm_is_stale = True
 
     async def _push_update(self, force: bool = False):
         """Build merged snapshot and send to callback (throttled)."""
@@ -669,6 +706,7 @@ class BtcStreamManager:
             ),
             "ks_stale": self._ks_stale_logged,
             "pm_stale": self._pm_stale_logged,
+            "pm_uptime_pct": self._get_pm_uptime_pct(),
         }
         try:
             await self._on_update(snapshot)
@@ -1540,6 +1578,7 @@ class BtcStreamManager:
             self._pm_data = None
             self._pm_token_ids = []
             self._rolling = True
+            self._reset_pm_uptime()
 
             pm_ok = False
             ks_ok = False
