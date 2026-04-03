@@ -286,16 +286,22 @@ def _try_find_pm_btc_15m():
     return None
 
 
-def _fetch_ob(token_id: str) -> tuple[float, float]:
-    """Fetch best bid/ask for a single PM CLOB token. Returns (best_bid, best_ask)."""
+def _fetch_ob(token_id: str, min_size: float = 10) -> tuple[float, float]:
+    """Fetch best bid/ask for a single PM CLOB token. Returns (best_bid, best_ask).
+    Ignores levels with size < min_size to filter thin orders."""
     try:
         resp = requests.get(
             f"{PM_CLOB}/book", params={"token_id": token_id}, timeout=5,
         )
         resp.raise_for_status()
         ob = resp.json()
-        best_bid = max((float(b["price"]) for b in ob.get("bids", [])), default=0.0)
-        best_ask = min((float(a["price"]) for a in ob.get("asks", [])), default=0.0)
+        # Filter by min_size, fall back to unfiltered if all levels are thin
+        best_bid = max((float(b["price"]) for b in ob.get("bids", []) if float(b["size"]) >= min_size), default=0.0)
+        best_ask = min((float(a["price"]) for a in ob.get("asks", []) if float(a["size"]) >= min_size), default=0.0)
+        if best_bid == 0.0:
+            best_bid = max((float(b["price"]) for b in ob.get("bids", [])), default=0.0)
+        if best_ask == 0.0:
+            best_ask = min((float(a["price"]) for a in ob.get("asks", [])), default=0.0)
         return best_bid, best_ask
     except Exception:
         return 0.0, 0.0
@@ -440,6 +446,7 @@ class BtcStreamManager:
     ROLL_RETRY_INTERVAL = 0.5    # seconds between retries when new contract not ready
     ROLL_MAX_RETRIES = 60        # max retries (~30s max wait for slow platforms)
     STALE_THRESHOLD = 5          # seconds — mark platform data as stale
+    MIN_BOOK_SIZE = 10           # ignore orderbook levels below this size for best bid/ask
 
     def __init__(self, on_update, on_ks_fill=None, on_ks_order=None,
                  on_pm_fill=None, on_pm_order=None):
@@ -935,12 +942,16 @@ class BtcStreamManager:
         self._ks_ob_yes = {float(p): float(s) for p, s in yes_levels if float(s) > 0}
         self._ks_ob_no = {float(p): float(s) for p, s in no_levels if float(s) > 0}
 
-        if yes_levels:
-            yes_bid = _safe_float(yes_levels[-1][0])
+        # Derive best bid/ask, filtering thin levels
+        min_sz = self.MIN_BOOK_SIZE
+        if self._ks_ob_yes:
+            thick = [p for p, s in self._ks_ob_yes.items() if s >= min_sz]
+            yes_bid = max(thick) if thick else max(self._ks_ob_yes.keys())
             self._kalshi_data["yes_bid"] = yes_bid
             self._kalshi_data["no_ask"] = round(1.0 - yes_bid, 4)
-        if no_levels:
-            no_bid = _safe_float(no_levels[-1][0])
+        if self._ks_ob_no:
+            thick = [p for p, s in self._ks_ob_no.items() if s >= min_sz]
+            no_bid = max(thick) if thick else max(self._ks_ob_no.keys())
             self._kalshi_data["no_bid"] = no_bid
             self._kalshi_data["yes_ask"] = round(1.0 - no_bid, 4)
 
@@ -965,13 +976,16 @@ class BtcStreamManager:
         else:
             ob.pop(price, None)
 
-        # Update best bid/ask from mirror
+        # Update best bid/ask from mirror, filtering thin levels
+        min_sz = self.MIN_BOOK_SIZE
         if side == "yes" and ob:
-            best = max(ob.keys())
+            thick = [p for p, s in ob.items() if s >= min_sz]
+            best = max(thick) if thick else max(ob.keys())
             self._kalshi_data["yes_bid"] = best
             self._kalshi_data["no_ask"] = round(1.0 - best, 4)
         elif side == "no" and ob:
-            best = max(ob.keys())
+            thick = [p for p, s in ob.items() if s >= min_sz]
+            best = max(thick) if thick else max(ob.keys())
             self._kalshi_data["no_bid"] = best
             self._kalshi_data["yes_ask"] = round(1.0 - best, 4)
 
@@ -1019,13 +1033,20 @@ class BtcStreamManager:
                     continue  # stale token from old contract
                 bids = msg.get("bids", [])
                 asks = msg.get("asks", [])
-                # Update full orderbook mirror
+                # Update full orderbook mirror (all levels, unfiltered)
                 self._pm_ob[asset_id] = {
                     "bids": {float(b["price"]): float(b["size"]) for b in bids if float(b["size"]) > 0},
                     "asks": {float(a["price"]): float(a["size"]) for a in asks if float(a["size"]) > 0},
                 }
-                best_bid = max((float(b["price"]) for b in bids), default=None)
-                best_ask = min((float(a["price"]) for a in asks), default=None)
+                # Best bid/ask filtered by MIN_BOOK_SIZE to ignore thin levels
+                min_sz = self.MIN_BOOK_SIZE
+                best_bid = max((float(b["price"]) for b in bids if float(b["size"]) >= min_sz), default=None)
+                best_ask = min((float(a["price"]) for a in asks if float(a["size"]) >= min_sz), default=None)
+                # Fall back to unfiltered if all levels are thin
+                if best_bid is None and bids:
+                    best_bid = max((float(b["price"]) for b in bids), default=None)
+                if best_ask is None and asks:
+                    best_ask = min((float(a["price"]) for a in asks), default=None)
                 log.debug("PM WS book: asset=%s..%s bid=%s ask=%s bids=%d asks=%d",
                           asset_id[:8], asset_id[-4:], best_bid, best_ask, len(bids), len(asks))
                 updated |= self._apply_pm_price(asset_id, best_bid, best_ask)
