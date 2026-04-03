@@ -1413,8 +1413,6 @@ class BtcStreamManager:
             self._pm_data = None
             self._pm_token_ids = []
             self._rolling = True
-            self._reset_pm_uptime()
-            self._reset_ks_uptime()
 
             pm_ok = False
             ks_ok = False
@@ -1482,6 +1480,8 @@ class BtcStreamManager:
                 await asyncio.sleep(self.ROLL_RETRY_INTERVAL)
 
             self._rolling = False
+            self._reset_pm_uptime()
+            self._reset_ks_uptime()
             roll_elapsed = time.monotonic() - roll_start
 
             if not pm_ok and not ks_ok:
