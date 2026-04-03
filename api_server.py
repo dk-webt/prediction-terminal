@@ -538,11 +538,12 @@ async def _ate_check(snapshot: dict):
         except (ValueError, TypeError):
             pass
 
-    # Get ask prices (cost to enter each leg)
+    # Get ask prices and identifiers (cost to enter each leg)
     ks_yes_ask = ks.get("yes_ask", 0) or 0
     ks_no_ask = ks.get("no_ask", 0) or 0
     pm_down_ask = pm.get("down_ask", 0) or 0
     pm_up_ask = pm.get("up_ask", 0) or 0
+    ks_ticker = ks.get("ticker", "")
 
     # Combo A: buy KS YES + buy PM DOWN → settles to $1.00
     cost_a = ks_yes_ask + pm_down_ask
