@@ -15,6 +15,10 @@ package-lock.json
 # Dev server log
 .server.log
 
+# Debug logs and sample outputs
+logs/
+sampleOutputs/
+btc_debug.log
+
 # Test fixtures (large JSON snapshots, generated via test_matching.py snapshot)
 test_fixtures/
-btc_debug.log

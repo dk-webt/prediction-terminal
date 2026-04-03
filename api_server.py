@@ -1247,5 +1247,5 @@ async def clear_btc_debug_log():
 
 if __name__ == "__main__":
     # Ensure all app loggers output to console
-    logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s.%(msecs)03d %(levelname)-5s %(name)s: %(message)s", datefmt="%H:%M:%S")
     uvicorn.run(app, host="127.0.0.1", port=8081, log_level="info")

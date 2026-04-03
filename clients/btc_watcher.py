@@ -1494,8 +1494,6 @@ class BtcStreamManager:
                 await asyncio.sleep(self.ROLL_RETRY_INTERVAL)
 
             self._rolling = False
-            self._reset_pm_uptime()
-            self._reset_ks_uptime()
             roll_elapsed = time.monotonic() - roll_start
 
             if not pm_ok and not ks_ok:
@@ -1508,7 +1506,7 @@ class BtcStreamManager:
             else:
                 log.info("ROLL DONE: pm_ok=%s ks_ok=%s total=%.0fms", pm_ok, ks_ok, roll_elapsed * 1000)
 
-            # Update WS subscriptions in-place, fall back to reconnect
+            # Update WS subscriptions in-place; reset uptime per-platform only when ready
             if pm_ok and self._pm_pool:
                 await self._pm_pool.swap_subscriptions(
                     new_sub_fn=lambda: [json.dumps({
@@ -1518,6 +1516,8 @@ class BtcStreamManager:
                     })],
                     unsub_msgs=[json.dumps({"operation": "unsubscribe", "assets_ids": old_pm_tokens})] if old_pm_tokens else None,
                 )
+                self._reset_pm_uptime()
+                self._mark_pm_recv()
                 # Always reconnect user channel (condition_id changed)
                 self._pm_user_reconnect.set()
             if ks_ok and self._ks_pool:
@@ -1534,6 +1534,8 @@ class BtcStreamManager:
                         },
                     })],
                 )
+                self._reset_ks_uptime()
+                self._mark_ks_recv()
                 log.info("KS pool subscriptions swapped to %s", new_ticker)
 
             await self._push_update(force=True)
