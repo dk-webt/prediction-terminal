@@ -1459,51 +1459,81 @@ class BtcStreamManager:
                 log.debug("ROLL attempt %d/%d (pm_ok=%s ks_ok=%s)",
                           attempt, self.ROLL_MAX_RETRIES, pm_ok, ks_ok)
 
-                # Fetch both platforms in parallel
-                coros = []
-                if not pm_ok:
-                    coros.append(("pm", asyncio.to_thread(fetch_polymarket_btc_15m)))
-                if not ks_ok:
-                    coros.append(("ks", asyncio.to_thread(fetch_kalshi_btc_15m)))
+                # Fetch platforms in parallel; process each independently as it arrives
+                pm_task = None if pm_ok else asyncio.create_task(
+                    asyncio.to_thread(fetch_polymarket_btc_15m), name="pm")
+                ks_task = None if ks_ok else asyncio.create_task(
+                    asyncio.to_thread(fetch_kalshi_btc_15m), name="ks")
 
-                results = await asyncio.gather(
-                    *(c for _, c in coros), return_exceptions=True
-                )
-                fetch_elapsed = time.monotonic() - attempt_start
+                pending = {t for t in (pm_task, ks_task) if t is not None}
+                while pending:
+                    done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                    for task in done:
+                        elapsed = (time.monotonic() - attempt_start) * 1000
+                        label = task.get_name()
+                        if task.exception():
+                            log.warning("ROLL %s exception (attempt %d, %.0fms): %s",
+                                        label, attempt, elapsed, task.exception())
+                            continue
 
-                for (label, _), result in zip(coros, results):
-                    if isinstance(result, Exception):
-                        log.warning("ROLL %s exception (attempt %d, %.0fms): %s",
-                                    label, attempt, fetch_elapsed * 1000, result)
-                        continue
+                        result = task.result()
 
-                    if label == "pm":
-                        got_slug = result.get("slug", "") if result else ""
-                        log.debug("ROLL PM response: slug=%s (want=%s) error=%s strike=%s tokens=%d",
-                                  got_slug, new_slug, result.get("error") if result else "null",
-                                  result.get("floor_strike") if result else "null",
-                                  len(result.get("token_ids", [])) if result else 0)
-                        if result and not result.get("error") and got_slug == new_slug:
-                            self._pm_data = result
-                            self._pm_token_ids = result.get("token_ids", [])
-                            self._pm_condition_id = result.get("condition_id", "")
-                            pm_ok = True
-                            self._mark_pm_recv()
-                            log.info("ROLL PM ready (attempt %d, %.0fms)", attempt, fetch_elapsed * 1000)
-                    elif label == "ks":
-                        got_ticker = result.get("ticker", "") if result else ""
-                        log.debug("ROLL KS response: ticker=%s (old=%s) error=%s strike=%s close=%s",
-                                  got_ticker, old_ks_ticker,
-                                  result.get("error") if result else "null",
-                                  result.get("floor_strike") if result else "null",
-                                  result.get("close_time", "") if result else "null")
-                        if result and not result.get("error") and got_ticker and got_ticker != old_ks_ticker:
-                            self._kalshi_data = result
-                            self._kalshi_ticker = got_ticker
-                            ks_ok = True
-                            self._mark_ks_recv()
-                            log.info("ROLL KS ready (attempt %d, %.0fms, ticker=%s)",
-                                     attempt, fetch_elapsed * 1000, got_ticker)
+                        if label == "pm":
+                            got_slug = result.get("slug", "") if result else ""
+                            log.debug("ROLL PM response: slug=%s (want=%s) error=%s strike=%s tokens=%d",
+                                      got_slug, new_slug, result.get("error") if result else "null",
+                                      result.get("floor_strike") if result else "null",
+                                      len(result.get("token_ids", [])) if result else 0)
+                            if result and not result.get("error") and got_slug == new_slug:
+                                self._pm_data = result
+                                self._pm_token_ids = result.get("token_ids", [])
+                                self._pm_condition_id = result.get("condition_id", "")
+                                pm_ok = True
+                                log.info("ROLL PM ready (attempt %d, %.0fms)", attempt, elapsed)
+                                # Swap PM subscription immediately — don't wait for KS
+                                if self._pm_pool:
+                                    await self._pm_pool.swap_subscriptions(
+                                        new_sub_fn=lambda: [json.dumps({
+                                            "assets_ids": list(self._pm_token_ids),
+                                            "operation": "subscribe",
+                                            "custom_feature_enabled": True,
+                                        })],
+                                        unsub_msgs=[json.dumps({"operation": "unsubscribe", "assets_ids": old_pm_tokens})] if old_pm_tokens else None,
+                                    )
+                                    self._reset_pm_uptime()
+                                    self._mark_pm_recv()
+                                    self._pm_user_reconnect.set()
+                                await self._push_update(force=True)
+
+                        elif label == "ks":
+                            got_ticker = result.get("ticker", "") if result else ""
+                            log.debug("ROLL KS response: ticker=%s (old=%s) error=%s strike=%s close=%s",
+                                      got_ticker, old_ks_ticker,
+                                      result.get("error") if result else "null",
+                                      result.get("floor_strike") if result else "null",
+                                      result.get("close_time", "") if result else "null")
+                            if result and not result.get("error") and got_ticker and got_ticker != old_ks_ticker:
+                                self._kalshi_data = result
+                                self._kalshi_ticker = got_ticker
+                                ks_ok = True
+                                log.info("ROLL KS ready (attempt %d, %.0fms, ticker=%s)",
+                                         attempt, elapsed, got_ticker)
+                                # Swap KS subscription immediately — don't wait for PM
+                                if self._ks_pool:
+                                    new_ticker = self._kalshi_ticker
+                                    await self._ks_pool.swap_subscriptions(
+                                        new_sub_fn=lambda: [json.dumps({
+                                            "id": 99,
+                                            "cmd": "subscribe",
+                                            "params": {
+                                                "channels": ["ticker", "orderbook_delta"],
+                                                "market_ticker": new_ticker,
+                                            },
+                                        })],
+                                    )
+                                    self._reset_ks_uptime()
+                                    self._mark_ks_recv()
+                                await self._push_update(force=True)
 
                 if pm_ok and ks_ok:
                     break
@@ -1524,38 +1554,6 @@ class BtcStreamManager:
                 log.warning("ROLL PARTIAL: KS failed to return new contract (PM ok) after %.0fms", roll_elapsed)
             else:
                 log.info("ROLL DONE: pm_ok=%s ks_ok=%s total=%.0fms", pm_ok, ks_ok, roll_elapsed * 1000)
-
-            # Update WS subscriptions in-place; reset uptime per-platform only when ready
-            if pm_ok and self._pm_pool:
-                await self._pm_pool.swap_subscriptions(
-                    new_sub_fn=lambda: [json.dumps({
-                        "assets_ids": list(self._pm_token_ids),
-                        "operation": "subscribe",
-                        "custom_feature_enabled": True,
-                    })],
-                    unsub_msgs=[json.dumps({"operation": "unsubscribe", "assets_ids": old_pm_tokens})] if old_pm_tokens else None,
-                )
-                self._reset_pm_uptime()
-                self._mark_pm_recv()
-                # Always reconnect user channel (condition_id changed)
-                self._pm_user_reconnect.set()
-            if ks_ok and self._ks_pool:
-                # Swap data subscriptions in-place — connections stay alive
-                # Old ticker data filtered out by market_ticker check in handler
-                new_ticker = self._kalshi_ticker
-                await self._ks_pool.swap_subscriptions(
-                    new_sub_fn=lambda: [json.dumps({
-                        "id": 99,
-                        "cmd": "subscribe",
-                        "params": {
-                            "channels": ["ticker", "orderbook_delta"],
-                            "market_ticker": new_ticker,
-                        },
-                    })],
-                )
-                self._reset_ks_uptime()
-                self._mark_ks_recv()
-                log.info("KS pool subscriptions swapped to %s", new_ticker)
 
             await self._push_update(force=True)
 
