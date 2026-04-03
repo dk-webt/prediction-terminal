@@ -1468,6 +1468,9 @@ class BtcStreamManager:
                 pending = {t for t in (pm_task, ks_task) if t is not None}
                 while pending:
                     done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                    wait_elapsed = (time.monotonic() - attempt_start) * 1000
+                    log.info("ROLL wait returned: done=%s pending=%s elapsed=%.0fms",
+                             [t.get_name() for t in done], [t.get_name() for t in pending], wait_elapsed)
                     for task in done:
                         elapsed = (time.monotonic() - attempt_start) * 1000
                         label = task.get_name()
