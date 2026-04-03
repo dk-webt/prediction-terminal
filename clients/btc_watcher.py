@@ -245,6 +245,7 @@ def _current_15m_slug() -> str:
 def _try_find_pm_btc_15m():
     """Try multiple strategies to find the current active PM BTC 15-min event."""
     slug = _current_15m_slug()
+    t0 = time.monotonic()
     resp = requests.get(
         f"{PM_GAMMA}/events",
         params={"slug": slug},
@@ -252,9 +253,13 @@ def _try_find_pm_btc_15m():
     )
     resp.raise_for_status()
     events = resp.json()
+    t1 = time.monotonic()
+    log.info("PM FIND: slug lookup %s -> %d events in %.0fms",
+             slug, len(events), (t1 - t0) * 1000)
     if events:
         return events[0]
 
+    t2 = time.monotonic()
     resp = requests.get(
         f"{PM_GAMMA}/events",
         params={
@@ -267,10 +272,16 @@ def _try_find_pm_btc_15m():
         timeout=5,
     )
     resp.raise_for_status()
-    for e in resp.json():
+    t3 = time.monotonic()
+    fallback_events = resp.json()
+    for e in fallback_events:
         s = e.get("slug", "")
         if s.startswith("btc-updown-15m-"):
+            log.info("PM FIND: fallback search found %s in %.0fms (%d events scanned)",
+                     s, (t3 - t2) * 1000, len(fallback_events))
             return e
+    log.warning("PM FIND: fallback search failed in %.0fms (%d events, none matched btc-updown-15m-)",
+                (t3 - t2) * 1000, len(fallback_events))
 
     return None
 
@@ -294,8 +305,11 @@ def fetch_polymarket_btc_15m() -> dict | None:
     """Fetch the currently active Polymarket BTC 15-min market."""
     from concurrent.futures import ThreadPoolExecutor
 
+    t_start = time.monotonic()
     event = _try_find_pm_btc_15m()
+    t_find = time.monotonic()
     if not event:
+        log.info("PM FETCH: _try_find returned None in %.0fms", (t_find - t_start) * 1000)
         return None
 
     market = event["markets"][0]
@@ -332,6 +346,11 @@ def fetch_polymarket_btc_15m() -> dict | None:
             down_bid, down_ask = futures["down"].result()
         if "strike" in futures:
             strike = futures["strike"].result()
+
+    t_end = time.monotonic()
+    log.info("PM FETCH: slug=%s find=%.0fms ob+strike=%.0fms total=%.0fms tokens=%d strike=%s",
+             slug, (t_find - t_start) * 1000, (t_end - t_find) * 1000,
+             (t_end - t_start) * 1000, len(tokens), strike)
 
     # Fallback: use Gamma API bestBid/bestAsk if CLOB orderbook was empty
     if up_ask == 0.0:
