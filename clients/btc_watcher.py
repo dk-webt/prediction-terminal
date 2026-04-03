@@ -601,10 +601,23 @@ class BtcStreamManager:
                 self._kalshi_ticker = ks_data.get("ticker", "")
                 self._mark_ks_recv()
                 log.info("FORCE REFRESH: KS updated — ticker=%s", self._kalshi_ticker)
-                if self._ks_pool and (hard or (old_ks_ticker and self._kalshi_ticker != old_ks_ticker)):
-                    log.info("FORCE REFRESH: KS pool restart (ticker changed or hard)")
+                if self._ks_pool and hard:
+                    log.info("FORCE REFRESH: KS pool hard restart")
                     await self._ks_pool.stop()
                     await self._ks_pool.start()
+                elif self._ks_pool and old_ks_ticker and self._kalshi_ticker != old_ks_ticker:
+                    new_ticker = self._kalshi_ticker
+                    await self._ks_pool.swap_subscriptions(
+                        new_sub_fn=lambda: [json.dumps({
+                            "id": 99,
+                            "cmd": "subscribe",
+                            "params": {
+                                "channels": ["ticker", "orderbook_delta"],
+                                "market_ticker": new_ticker,
+                            },
+                        })],
+                    )
+                    log.info("FORCE REFRESH: KS pool subscriptions swapped to %s", new_ticker)
             elif isinstance(ks_data, Exception):
                 log.warning("FORCE REFRESH: KS fetch failed — %s", ks_data)
             else:
@@ -782,18 +795,18 @@ class BtcStreamManager:
             if channel and sid is not None:
                 log.info("KS WS subscribed: channel=%s sid=%d", channel, sid)
 
-        elif msg_type == "ticker":
-            self._apply_kalshi_ticker(data)
-            self._mark_ks_recv()
-            await self._push_update()
+        elif msg_type in ("ticker", "orderbook_snapshot", "orderbook_delta"):
+            # Filter out data from old tickers after a swap
+            msg_ticker = data.get("market_ticker", "")
+            if msg_ticker and msg_ticker != self._kalshi_ticker:
+                return
 
-        elif msg_type == "orderbook_snapshot":
-            self._apply_kalshi_orderbook_snapshot(data)
-            self._mark_ks_recv()
-            await self._push_update()
-
-        elif msg_type == "orderbook_delta":
-            self._apply_kalshi_orderbook_delta(data)
+            if msg_type == "ticker":
+                self._apply_kalshi_ticker(data)
+            elif msg_type == "orderbook_snapshot":
+                self._apply_kalshi_orderbook_snapshot(data)
+            else:
+                self._apply_kalshi_orderbook_delta(data)
             self._mark_ks_recv()
             await self._push_update()
 
@@ -1494,10 +1507,20 @@ class BtcStreamManager:
                 # Always reconnect user channel (condition_id changed)
                 self._pm_user_reconnect.set()
             if ks_ok and self._ks_pool:
-                # Restart pool with new ticker (subscribe_msgs reads self._kalshi_ticker)
-                log.info("KS pool restart for new ticker: %s", self._kalshi_ticker)
-                await self._ks_pool.stop()
-                await self._ks_pool.start()
+                # Swap data subscriptions in-place — connections stay alive
+                # Old ticker data filtered out by market_ticker check in handler
+                new_ticker = self._kalshi_ticker
+                await self._ks_pool.swap_subscriptions(
+                    new_sub_fn=lambda: [json.dumps({
+                        "id": 99,
+                        "cmd": "subscribe",
+                        "params": {
+                            "channels": ["ticker", "orderbook_delta"],
+                            "market_ticker": new_ticker,
+                        },
+                    })],
+                )
+                log.info("KS pool subscriptions swapped to %s", new_ticker)
 
             await self._push_update(force=True)
 
