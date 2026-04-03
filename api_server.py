@@ -473,14 +473,29 @@ async def _ate_unwind(trade_ws, platform: str, side: str, ticker: str, token_id:
             result = await _execute_order(trade_ws, unwind_id, unwind_pending)
 
         else:  # polymarket
-            # PM FOK = all or nothing, so fill_count = requested_count
+            # PM FAK = partial fills possible, parse actual fill count
+            order_data = buy_result.get("data", {})
+            if isinstance(order_data, dict):
+                fill_count = int(float(order_data.get("fills", [{}])[0].get("count", 0) if order_data.get("fills") else 0))
+                if fill_count <= 0:
+                    # Try alternative field
+                    fill_count = int(float(order_data.get("matchedAmount", 0) or 0))
+                if fill_count <= 0:
+                    fill_count = requested_count  # fallback to requested
+            else:
+                fill_count = requested_count
+
+            if fill_count <= 0:
+                log.info("ATE UNWIND: PM fill_count=0, nothing to unwind")
+                return
+
             unwind_id = f"unwind-{str(_uuid.uuid4())[:6]}"
             unwind_pending = {unwind_id: {
                 "platform": "polymarket", "action": "sell", "side": side,
-                "count": requested_count, "price": None, "order_type": "market",
+                "count": fill_count, "price": None, "order_type": "market",
                 "ticker": "", "token_id": token_id,
             }}
-            log.warning("ATE UNWIND: selling %d PM %s MKT", requested_count, side.upper())
+            log.warning("ATE UNWIND: selling %d PM %s MKT (requested=%d)", fill_count, side.upper(), requested_count)
             result = await _execute_order(trade_ws, unwind_id, unwind_pending)
 
         unwind_ok = result and result.get("success")
@@ -686,17 +701,70 @@ async def _ate_check(snapshot: dict):
         ks_ok = isinstance(ks_result, dict) and ks_result.get("success")
         pm_ok = isinstance(pm_result, dict) and pm_result.get("success")
 
+        # Parse actual fill counts (FAK/partial fills)
+        ks_filled = 0
+        if ks_ok:
+            ks_order_data = ks_result.get("data", {})
+            if isinstance(ks_order_data, dict):
+                ks_order_info = ks_order_data.get("order", ks_order_data)
+                ks_filled = int(float(ks_order_info.get("fill_count_fp", 0)))
+            if ks_filled <= 0:
+                ks_filled = actual_count  # fallback
+
+        pm_filled = 0
+        if pm_ok:
+            pm_order_data = pm_result.get("data", {})
+            if isinstance(pm_order_data, dict):
+                # PM response may have matchedAmount or need to parse from order
+                pm_filled = int(float(pm_order_data.get("matchedAmount", 0) or 0))
+                if pm_filled <= 0:
+                    pm_filled = int(float(pm_order_data.get("size", 0) or 0))
+            if pm_filled <= 0:
+                pm_filled = actual_count  # fallback
+
+        log.info("ATE fill counts: KS=%d PM=%d (requested=%d)", ks_filled, pm_filled, actual_count)
+
         if ks_ok and pm_ok:
-            log.warning("ATE: both legs executed successfully — auto-disabled")
-            ate_status = "success"
+            # Both succeeded — check if sizes match
+            if ks_filled == pm_filled:
+                log.warning("ATE: both legs filled %d contracts — auto-disabled", ks_filled)
+                ate_status = "success"
+            elif ks_filled > pm_filled:
+                excess = ks_filled - pm_filled
+                log.warning("ATE: size mismatch — KS filled %d, PM filled %d — unwinding %d KS",
+                            ks_filled, pm_filled, excess)
+                ate_status = "partial_rebalance"
+                # Sell excess KS contracts
+                rebal_id = f"rebal-{str(_uuid.uuid4())[:6]}"
+                rebal_pending = {rebal_id: {
+                    "platform": "kalshi", "action": "sell", "side": ks_side,
+                    "count": excess, "price": None, "order_type": "market",
+                    "ticker": ks_ticker, "token_id": "",
+                }}
+                log.warning("ATE REBALANCE: selling %d KS %s MKT", excess, ks_side.upper())
+                await _execute_order(trade_ws, rebal_id, rebal_pending)
+            else:
+                excess = pm_filled - ks_filled
+                log.warning("ATE: size mismatch — PM filled %d, KS filled %d — unwinding %d PM",
+                            pm_filled, ks_filled, excess)
+                ate_status = "partial_rebalance"
+                # Sell excess PM contracts
+                rebal_id = f"rebal-{str(_uuid.uuid4())[:6]}"
+                rebal_pending = {rebal_id: {
+                    "platform": "polymarket", "action": "sell", "side": pm_side,
+                    "count": excess, "price": None, "order_type": "market",
+                    "ticker": "", "token_id": pm_token_id,
+                }}
+                log.warning("ATE REBALANCE: selling %d PM %s MKT", excess, pm_side.upper())
+                await _execute_order(trade_ws, rebal_id, rebal_pending)
         elif ks_ok and not pm_ok:
-            log.error("ATE: KS succeeded but PM FAILED: %s — attempting unwind",
-                      pm_result.get("error") if isinstance(pm_result, dict) else pm_result)
+            log.error("ATE: KS succeeded (%d filled) but PM FAILED: %s — attempting unwind",
+                      ks_filled, pm_result.get("error") if isinstance(pm_result, dict) else pm_result)
             ate_status = "partial_ks"
             await _ate_unwind(trade_ws, "kalshi", ks_side, ks_ticker, "", ks_result, actual_count)
         elif pm_ok and not ks_ok:
-            log.error("ATE: PM succeeded but KS FAILED: %s — attempting unwind",
-                      ks_result.get("error") if isinstance(ks_result, dict) else ks_result)
+            log.error("ATE: PM succeeded (%d filled) but KS FAILED: %s — attempting unwind",
+                      pm_filled, ks_result.get("error") if isinstance(ks_result, dict) else ks_result)
             ate_status = "partial_pm"
             await _ate_unwind(trade_ws, "polymarket", pm_side, "", pm_token_id, pm_result, actual_count)
         else:
@@ -1246,4 +1314,15 @@ async def clear_btc_debug_log():
 if __name__ == "__main__":
     # Ensure all app loggers output to console
     logging.basicConfig(level=logging.INFO, format="%(asctime)s.%(msecs)03d %(levelname)-5s %(name)s: %(message)s", datefmt="%H:%M:%S")
+
+    # Pre-warm PM CLOB client to avoid 2s delay on first trade
+    try:
+        from clients.executor import prewarm_pm_client
+        if prewarm_pm_client():
+            logging.getLogger(__name__).info("PM CLOB client pre-warmed")
+        else:
+            logging.getLogger(__name__).warning("PM CLOB client pre-warm failed (auth not configured?)")
+    except Exception as e:
+        logging.getLogger(__name__).warning("PM CLOB client pre-warm error: %s", e)
+
     uvicorn.run(app, host="127.0.0.1", port=8081, log_level="info")

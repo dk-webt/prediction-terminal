@@ -291,6 +291,12 @@ _pm_client = None
 _pm_approved_tokens: set[str] = set()  # token_ids with conditional allowance set
 
 
+def prewarm_pm_client():
+    """Pre-initialize the PM CLOB client at startup to avoid 2s delay on first trade."""
+    client = _get_pm_client()
+    return client is not None
+
+
 def _get_pm_client():
     """
     Lazy-init the Polymarket CLOB client.
@@ -424,7 +430,8 @@ def place_polymarket_order(
         if order_type == "market":
             if price is None:
                 return {"success": False, "error": "PM market order requires price cap from live data"}
-            # Market order as FOK limit at cap price — size is always share count
+            # Market order as FAK (Fill and Kill) at cap price — fills what's
+            # available immediately, cancels remainder. Better than FOK for thin books.
             signed = client.create_order(
                 OrderArgs(
                     token_id=token_id,
@@ -434,7 +441,7 @@ def place_polymarket_order(
                 ),
                 options=opts,
             )
-            resp = client.post_order(signed, orderType=OrderType.FOK)
+            resp = client.post_order(signed, orderType=OrderType.FAK)
         else:
             # Limit order — create_and_post_order always posts as GTC
             resp = client.create_and_post_order(

@@ -40,7 +40,43 @@
 
 ## Active
 
-### 1. Fix Trade Execution
+### 1. Diagnose asyncio.wait delay in roll loop
+
+**Status:** Diagnostic log added, awaiting next roll test data
+
+PM fetch completes in ~600ms but `ROLL PM ready` fires ~9s later. `asyncio.wait(FIRST_COMPLETED)` should yield PM immediately, but something delays it by ~7s.
+
+**Possible causes:**
+- Event loop blocked by BRTI tracker / Crypto.com reconnect spam
+- Default thread pool executor saturated
+- `asyncio.to_thread` result not propagated until next event loop poll
+
+**Next:** Check the `ROLL wait returned` log at next roll to pinpoint where the delay is.
+
+### 2. Pre-warm contract fetch before roll boundary
+
+**Status:** Planned, blocked on #1
+
+Pre-fetch the next contract before the 15-min window boundary to reduce roll latency:
+- Compute new slug early (deterministic, known 15 min in advance)
+- Start polling Gamma at T-10s (contract may be created slightly early)
+- Pre-fetch strike price (eventStartTime for next window is known)
+
+**Wait for:** Timing logs from #1 to confirm where the bottleneck is.
+
+### 3. Investigate Crypto.com BRTI feed instability
+
+**Status:** Observed, low priority
+
+Crypto.com WebSocket disconnects every ~15-17s consistently. Causes reconnect spam in logs and may contribute to event loop contention (related to #1). Not critical since BRTI works with 5/6 exchanges.
+
+### 4. Size-adjusted pricing for ATE profit threshold
+
+**Status:** Planned
+
+Currently ATE uses top-of-book ask prices for profit calculation (`ks_yes_ask + pm_down_ask`). This doesn't account for orderbook depth — the actual average fill price for 10 contracts may be higher if the top level is thin. Should walk the orderbook mirror to compute realistic average fill price for the target size, then check profitability against that.
+
+### 5. Fix Trade Execution
 
 **Goal:** Get BUY/SELL orders actually executing on both platforms.
 
