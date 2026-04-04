@@ -116,16 +116,16 @@ export default function App() {
         }
 
         // Compute derived values
-        const yesBid = typeof ks?.yes_bid === 'number' ? ks.yes_bid : null
-        const upBid = typeof pm?.up_bid === 'number' ? pm.up_bid : null
-        const noBid = typeof ks?.no_bid === 'number' ? ks.no_bid : null
-        const downBid = typeof pm?.down_bid === 'number' ? pm.down_bid : null
+        const yesAsk = typeof ks?.yes_ask === 'number' ? ks.yes_ask : null
+        const upAsk = typeof pm?.up_ask === 'number' ? pm.up_ask : null
+        const noAsk = typeof ks?.no_ask === 'number' ? ks.no_ask : null
+        const downAsk = typeof pm?.down_ask === 'number' ? pm.down_ask : null
         const coinbase = typeof snap.btc_coinbase === 'number' ? snap.btc_coinbase : null
         const chainlink = typeof snap.btc_chainlink === 'number' ? snap.btc_chainlink : null
 
         const priceGap = (coinbase !== null && chainlink !== null) ? coinbase - chainlink : null
-        const comboA = (yesBid !== null && downBid !== null) ? yesBid + downBid : null
-        const comboB = (noBid !== null && upBid !== null) ? noBid + upBid : null
+        const comboA = (yesAsk !== null && downAsk !== null) ? yesAsk + downAsk : null
+        const comboB = (noAsk !== null && upAsk !== null) ? noAsk + upAsk : null
 
         // Ensure monotonic timestamps for lightweight-charts
         const pts = useStore.getState().btcTimeSeries.points

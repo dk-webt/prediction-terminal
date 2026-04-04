@@ -113,8 +113,8 @@ export interface BtcSnapshot {
 export interface BtcTimeSeriesPoint {
   time: number             // Unix seconds (monotonic, for lightweight-charts)
   priceGap: number | null  // coinbase - kraken
-  comboA: number | null    // KS yes_bid + PM down_bid
-  comboB: number | null    // KS no_bid + PM up_bid
+  comboA: number | null    // KS yes_ask + PM down_ask
+  comboB: number | null    // KS no_ask + PM up_ask
   coinbase: number | null   // BRTI estimate (6-exchange CF Benchmarks replication, Kalshi settlement source)
   chainlink: number | null  // Chainlink BTC/USD via PM RTDS (PM settlement source)
 }
