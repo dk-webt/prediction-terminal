@@ -454,8 +454,9 @@ class OracleAlignmentBuffer:
 
     TOLERANCE_S = 1.0  # max age difference within a bin
 
-    def __init__(self, max_ticks: int = 900):
+    def __init__(self, max_ticks: int = 900, on_tick=None):
         self.ticks: deque[AlignedTick] = deque(maxlen=max_ticks)
+        self._on_tick = on_tick  # callback(AlignedTick) on each new aligned tick
         # Pending values for current bin
         self._brti: dict | None = None       # {price, local_ts, server_ts}
         self._chainlink: dict | None = None  # {price, local_ts, server_ts}
@@ -500,10 +501,19 @@ class OracleAlignmentBuffer:
         )
 
         # Avoid duplicate bins
+        is_new = True
         if self.ticks and self.ticks[-1].bin_ts == tick.bin_ts:
             self.ticks[-1] = tick  # update in place
+            is_new = False
         else:
             self.ticks.append(tick)
+
+        # Fire callback for new ticks (not updates to existing bin)
+        if is_new and self._on_tick:
+            try:
+                self._on_tick(tick)
+            except Exception:
+                pass
 
         # Clear pending so we don't re-emit
         self._brti = None
@@ -514,6 +524,16 @@ class OracleAlignmentBuffer:
         if n is None:
             return [t.spread for t in self.ticks]
         return [t.spread for t in list(self.ticks)[-n:]]
+
+    def get_brti_prices(self, n: int | None = None) -> list[float]:
+        """Return the last n BRTI prices (or all if n is None)."""
+        src = self.ticks if n is None else list(self.ticks)[-n:]
+        return [t.brti_price for t in src]
+
+    def get_chainlink_prices(self, n: int | None = None) -> list[float]:
+        """Return the last n Chainlink prices (or all if n is None)."""
+        src = self.ticks if n is None else list(self.ticks)[-n:]
+        return [t.chainlink_price for t in src]
 
     def get_latest(self) -> AlignedTick | None:
         """Return the most recent aligned tick, or None."""
@@ -613,7 +633,18 @@ class BtcStreamManager:
         self._chainlink_server_ts: float = 0.0   # Chainlink oracle measurement timestamp (epoch s)
         self._chainlink_local_ts: float = 0.0    # local time.time() when RTDS message arrived
         self._brti_tracker = None  # BRTITracker instance
-        self._oracle_buf = OracleAlignmentBuffer(max_ticks=900)  # ~15 min of 1s ticks
+        self._deribit_poller = None  # DeribitPoller instance (Model A sigma)
+
+        # Model orchestrator — owns all quant model state, queryable by ATE
+        from clients.oracle_model import ModelOrchestrator
+        self._model_orch = ModelOrchestrator(adf_window_s=1200, ou_window_s=600)
+
+        # Alignment buffer feeds the orchestrator on each new tick
+        def _on_aligned_tick(tick):
+            self._model_orch.on_aligned_tick(
+                tick.bin_ts, tick.brti_price, tick.chainlink_price, tick.spread,
+            )
+        self._oracle_buf = OracleAlignmentBuffer(max_ticks=900, on_tick=_on_aligned_tick)
 
         # Signals WS loops to reconnect with new tokens/tickers
         self._pm_user_reconnect = asyncio.Event()  # separate for user channel
@@ -645,6 +676,9 @@ class BtcStreamManager:
                  (t1 - t0) * 1000, self._current_slug, self._kalshi_ticker,
                  len(self._pm_token_ids),
                  self._pm_data.get("floor_strike") if self._pm_data else None)
+
+        # Feed initial strikes to model orchestrator
+        self._sync_orch_strikes()
 
         # Pre-warm PM token metadata (neg_risk, tick_size, fee_rate) for ATE speed
         if self._pm_token_ids:
@@ -700,6 +734,11 @@ class BtcStreamManager:
         self._tasks.append(asyncio.create_task(self._rtds_ws_loop()))
         self._tasks.append(asyncio.create_task(self._window_roll_loop()))
 
+        # Start Deribit IV poller (Model A sigma) — poll every 5 min
+        from clients.deribit import DeribitPoller
+        self._deribit_poller = DeribitPoller(interval_s=300)
+        await self._deribit_poller.start()
+
         # Start PM user channel for fill/order tracking if creds configured
         from config import POLYMARKET_API_KEY, POLYMARKET_API_SECRET, POLYMARKET_API_PASSPHRASE
         if POLYMARKET_API_KEY and POLYMARKET_API_SECRET and POLYMARKET_API_PASSPHRASE:
@@ -717,6 +756,8 @@ class BtcStreamManager:
             await self._pm_pool.stop()
         if self._brti_tracker:
             await self._brti_tracker.stop()
+        if self._deribit_poller:
+            await self._deribit_poller.stop()
         for t in self._tasks:
             t.cancel()
         for t in self._tasks:
@@ -911,6 +952,44 @@ class BtcStreamManager:
         self._ks_last_live_mark = 0.0
         self._ks_is_stale = True
 
+    def _sync_orch_strikes(self):
+        """Push current strike prices and window end time to the model orchestrator."""
+        ks_strike = 0.0
+        pm_strike = 0.0
+        window_end_ts = 0.0
+        if self._kalshi_data:
+            ks_strike = float(self._kalshi_data.get("floor_strike", 0) or 0)
+            close_time = self._kalshi_data.get("close_time", "")
+            if close_time:
+                try:
+                    if close_time.endswith("Z"):
+                        close_time = close_time[:-1] + "+00:00"
+                    window_end_ts = datetime.fromisoformat(close_time).timestamp()
+                except (ValueError, TypeError):
+                    pass
+        if self._pm_data:
+            pm_strike = float(self._pm_data.get("floor_strike", 0) or 0)
+            if not window_end_ts:
+                end_time = self._pm_data.get("end_time", "")
+                if end_time:
+                    try:
+                        if end_time.endswith("Z"):
+                            end_time = end_time[:-1] + "+00:00"
+                        window_end_ts = datetime.fromisoformat(end_time).timestamp()
+                    except (ValueError, TypeError):
+                        pass
+        self._model_orch.set_strikes(ks_strike, pm_strike, window_end_ts)
+
+    def _sync_orch_sigma(self):
+        """Push latest Deribit sigma to the model orchestrator."""
+        if self._deribit_poller and self._deribit_poller.sigma_15m:
+            self._model_orch.set_sigma(self._deribit_poller.sigma_15m)
+
+    def get_model_state(self):
+        """Compute and return current model state. Called by ATE."""
+        self._sync_orch_sigma()
+        return self._model_orch.compute()
+
     def _get_oracle_aligned_summary(self) -> dict | None:
         """Summary of oracle alignment buffer for snapshot."""
         latest = self._oracle_buf.get_latest()
@@ -1045,6 +1124,10 @@ class BtcStreamManager:
             "pm_uptime_pct": self._get_pm_uptime_pct(),
             # Oracle alignment data for Model B
             "oracle_aligned": self._get_oracle_aligned_summary(),
+            # Deribit IV for Model A
+            "deribit": self._deribit_poller.get_status() if self._deribit_poller else None,
+            # Model state (computed on demand for ATE — not recomputed here for perf)
+            "model_state_available": self._model_orch.last_state is not None,
         }
         try:
             await self._on_update(snapshot)
@@ -1796,6 +1879,9 @@ class BtcStreamManager:
                 log.warning("ROLL PARTIAL: KS failed to return new contract (PM ok) after %.0fms", roll_elapsed)
             else:
                 log.info("ROLL DONE: pm_ok=%s ks_ok=%s total=%.0fms", pm_ok, ks_ok, roll_elapsed * 1000)
+
+            # Sync new strikes to model orchestrator
+            self._sync_orch_strikes()
 
             await self._push_update(force=True)
 

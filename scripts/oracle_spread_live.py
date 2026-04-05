@@ -6,9 +6,10 @@ Connects to BRTI (6-exchange CF Benchmarks replication) and Chainlink RTDS,
 aligns prices into 1-second bins, and prints each aligned tick.
 
 Usage:
-  python3 scripts/oracle_spread_live.py
-  python3 scripts/oracle_spread_live.py --no-header   # skip column header
-  python3 scripts/oracle_spread_live.py --adf 30       # ADF every 30s (default: 60s)
+  python3 scripts/oracle_spread_live.py                 # full output (strikes + all models, ADF every 10s)
+  python3 scripts/oracle_spread_live.py --adf 30        # ADF/model output every 30s (default: 10s)
+  python3 scripts/oracle_spread_live.py --no-strikes    # disable strike fetching / Model A / Model C
+  python3 scripts/oracle_spread_live.py --no-header     # skip column header
 """
 
 import asyncio
@@ -24,7 +25,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import COINBASE_CDP_API_KEY, COINBASE_CDP_API_SECRET
 from clients.brti_tracker import BRTITracker
-from clients.oracle_model import SpreadAnalyzer
+from clients.deribit import DeribitPoller
+from clients.oracle_model import (
+    SpreadAnalyzer, model_a_both_platforms, model_c_joint, calibrate_copula,
+)
 
 PM_RTDS_URL = "wss://ws-live-data.polymarket.com"
 
@@ -35,8 +39,18 @@ _chainlink_pending: dict | None = None  # {price, local_ts, server_ts}
 _last_bin: int = 0
 _tick_count: int = 0
 _analyzer = SpreadAnalyzer(window_s=1200)  # 20-min rolling window
+_deribit: DeribitPoller | None = None       # initialized in main()
+# Aligned price arrays for rolling correlation (Model C)
+_aligned_brti: list[float] = []
+_aligned_cl: list[float] = []
+_MAX_ALIGNED = 1200  # keep 20 min of aligned prices
 _last_adf_time: float = 0.0
-_adf_interval: float = 60.0  # seconds between ADF prints
+_adf_interval: float = 10.0  # seconds between ADF/OU/Model A/C prints
+
+# Current 15-min window strike prices (fetched at startup + each roll)
+_ks_strike: float = 0.0
+_pm_strike: float = 0.0
+_window_end_ts: float = 0.0  # epoch seconds when current window expires
 
 
 def _try_pair():
@@ -79,6 +93,13 @@ def _try_pair():
 
     # Feed the spread analyzer
     _analyzer.add_tick(brti_bin, spread)
+
+    # Track aligned prices for correlation (Model C)
+    _aligned_brti.append(_brti_pending["price"])
+    _aligned_cl.append(_chainlink_pending["price"])
+    if len(_aligned_brti) > _MAX_ALIGNED:
+        _aligned_brti.pop(0)
+        _aligned_cl.pop(0)
 
     # Periodic ADF + OU calibration
     _maybe_print_stats()
@@ -160,8 +181,130 @@ def _maybe_print_stats():
         flush=True,
     )
     print(
-        f"  └─ AR(1): a={ou.a:.6f}  b={ou.b:.6f}  "
+        f"  │  AR(1): a={ou.a:.6f}  b={ou.b:.6f}  "
         f"std(ε)=${ou.residual_std:.4f}",
+        flush=True,
+    )
+
+    # ── Model A: per-platform probabilities ──
+    _print_model_a()
+
+
+def _print_model_a():
+    """Print Model A probabilities if we have all inputs."""
+    sigma = _deribit.sigma_15m if _deribit else None
+    if not sigma:
+        print(f"  └─ MODEL A: waiting for Deribit IV...", flush=True)
+        return
+
+    # Need both oracle prices and strikes
+    brti = _brti_pending["price"] if _brti_pending else None
+    cl = _chainlink_pending["price"] if _chainlink_pending else None
+
+    # Use last known prices if pending are cleared
+    if not brti or not cl:
+        latest = _analyzer._raw[-1] if _analyzer._raw else None
+        if not latest:
+            print(f"  └─ MODEL A: no oracle prices available", flush=True)
+            return
+        # We don't have individual prices from the analyzer, skip if not available
+        print(f"  └─ MODEL A: σ_15m={sigma:.6f} ({_deribit.source}) — no strike data", flush=True)
+        return
+
+    if _ks_strike <= 0 or _pm_strike <= 0 or _window_end_ts <= 0:
+        print(
+            f"  └─ MODEL A: σ_15m={sigma:.6f} ({_deribit.source}) "
+            f"— run with --strikes to enable probability calc",
+            flush=True,
+        )
+        return
+
+    # Compute tau (fraction of 15-min window remaining)
+    now = time.time()
+    window_duration = 15 * 60  # 15 minutes in seconds
+    time_remaining = max(0, _window_end_ts - now)
+    tau = time_remaining / window_duration
+    tau = min(1.0, max(0.0, tau))
+
+    result = model_a_both_platforms(
+        brti_price=brti,
+        chainlink_price=cl,
+        ks_strike=_ks_strike,
+        pm_strike=_pm_strike,
+        tau=tau,
+        sigma_15m=sigma,
+    )
+
+    ks = result["kalshi"]
+    pm = result["polymarket"]
+
+    tau_min = tau * 15
+    print(
+        f"  ├─ MODEL A (σ_15m={sigma:.6f}, τ={tau:.3f} = {tau_min:.1f}min left, {_deribit.source})",
+        flush=True,
+    )
+    if ks:
+        print(
+            f"  │  KS:  P(above ${_ks_strike:,.0f}) = {ks.p_above:.4f}  "
+            f"P(below) = {ks.p_below:.4f}  d2={ks.d2:+.4f}  "
+            f"(BRTI=${brti:,.2f})",
+            flush=True,
+        )
+    if pm:
+        print(
+            f"  │  PM:  P(above ${_pm_strike:,.0f}) = {pm.p_above:.4f}  "
+            f"P(below) = {pm.p_below:.4f}  d2={pm.d2:+.4f}  "
+            f"(CL=${cl:,.2f})",
+            flush=True,
+        )
+
+    # ── Model C: joint probabilities ──
+    if ks and pm:
+        _print_model_c(ks.p_above, pm.p_above)
+    else:
+        print(f"  └─", flush=True)
+
+
+def _print_model_c(p_ks_above: float, p_pm_above: float):
+    """Print Model C joint outcome probabilities with calibrated copula."""
+    import numpy as np_local
+
+    cal = calibrate_copula(
+        np_local.array(_aligned_brti),
+        np_local.array(_aligned_cl),
+    )
+
+    if cal is None:
+        print(f"  └─ MODEL C: insufficient data for copula ({len(_aligned_brti)} ticks)", flush=True)
+        return
+
+    # Compute for both strategies
+    strat_a = model_c_joint(p_ks_above, p_pm_above, cal.rho, cal.nu, strategy="A")
+    strat_b = model_c_joint(p_ks_above, p_pm_above, cal.rho, cal.nu, strategy="B")
+
+    rho_color = "\033[32m" if cal.rho > 0.8 else "\033[33m" if cal.rho > 0.5 else "\033[31m"
+    nu_color = "\033[33m" if cal.nu < 5 else "\033[0m"
+    print(
+        f"  ├─ MODEL C (τ={cal.kendall_tau:+.4f}, ρ={rho_color}{cal.rho:+.4f}\033[0m, "
+        f"ν={nu_color}{cal.nu:.1f}\033[0m, LL={cal.log_likelihood:.1f}, {cal.n_obs} obs)",
+        flush=True,
+    )
+
+    # Strategy A
+    ll_color_a = "\033[32m" if strat_a.p_ll < 0.05 else "\033[33m" if strat_a.p_ll < 0.15 else "\033[31m"
+    print(
+        f"  │  Strat A (KS YES + PM NO):  "
+        f"WW={strat_a.p_ww:.4f}  WL={strat_a.p_wl:.4f}  LW={strat_a.p_lw:.4f}  "
+        f"LL={ll_color_a}{strat_a.p_ll:.4f}\033[0m",
+        flush=True,
+    )
+
+    # Strategy B
+    ll_color_b = "\033[32m" if strat_b.p_ll < 0.05 else "\033[33m" if strat_b.p_ll < 0.15 else "\033[31m"
+    print(
+        f"  └─ Strat B (KS NO  + PM YES): "
+        f"WW={strat_b.p_ww:.4f}  WL={strat_b.p_wl:.4f}  LW={strat_b.p_lw:.4f}  "
+        f"LL={ll_color_b}{strat_b.p_ll:.4f}\033[0m",
         flush=True,
     )
 
@@ -251,11 +394,54 @@ async def rtds_loop():
 
 # ── Main ────────────────────────────────────────────────────────────────────
 
-async def main():
-    global _adf_interval
-    show_header = "--no-header" not in sys.argv
+def _fetch_strikes():
+    """Fetch current 15-min window strike prices and expiry from both platforms."""
+    global _ks_strike, _pm_strike, _window_end_ts
+    try:
+        from clients.btc_watcher import fetch_btc_snapshot
+        snap = fetch_btc_snapshot()
+        ks = snap.get("kalshi") or {}
+        pm = snap.get("polymarket") or {}
 
-    # Parse --adf N (interval in seconds)
+        _ks_strike = float(ks.get("floor_strike", 0) or 0)
+        _pm_strike = float(pm.get("floor_strike", 0) or 0)
+
+        # Parse window end time
+        close_time = ks.get("close_time", "") or pm.get("end_time", "")
+        if close_time:
+            from datetime import datetime as dt, timezone as tz
+            try:
+                if close_time.endswith("Z"):
+                    close_time = close_time[:-1] + "+00:00"
+                _window_end_ts = dt.fromisoformat(close_time).timestamp()
+            except Exception:
+                pass
+
+        print(
+            f"Strikes: KS=${_ks_strike:,.0f}  PM=${_pm_strike:,.0f}  "
+            f"Window ends: {datetime.fromtimestamp(_window_end_ts, tz=timezone.utc).strftime('%H:%M:%S') if _window_end_ts else '?'}",
+            flush=True,
+        )
+    except Exception as e:
+        print(f"Strike fetch error: {e}", flush=True)
+
+
+async def _strike_refresh_loop():
+    """Refresh strikes every 15 minutes (on window roll)."""
+    while True:
+        await asyncio.sleep(15 * 60)
+        try:
+            await asyncio.to_thread(_fetch_strikes)
+        except Exception as e:
+            print(f"Strike refresh error: {e}", flush=True)
+
+
+async def main():
+    global _adf_interval, _deribit
+    show_header = "--no-header" not in sys.argv
+    use_strikes = "--no-strikes" not in sys.argv  # strikes ON by default
+
+    # Parse --adf N (interval in seconds, default 10)
     if "--adf" in sys.argv:
         idx = sys.argv.index("--adf")
         if idx + 1 < len(sys.argv):
@@ -281,6 +467,16 @@ async def main():
         )
         print("-" * 120)
 
+    # Start Deribit IV poller (5-min interval)
+    _deribit = DeribitPoller(interval_s=300)
+    print("Starting Deribit IV poller...", flush=True)
+    await _deribit.start()
+
+    # Fetch initial strikes if requested
+    if use_strikes:
+        print("Fetching contract strike prices...", flush=True)
+        await asyncio.to_thread(_fetch_strikes)
+
     tracker = BRTITracker(
         coinbase_api_key=COINBASE_CDP_API_KEY,
         coinbase_api_secret=COINBASE_CDP_API_SECRET,
@@ -291,6 +487,7 @@ async def main():
     await tracker.start()
 
     rtds_task = asyncio.create_task(rtds_loop())
+    strike_task = asyncio.create_task(_strike_refresh_loop()) if use_strikes else None
 
     try:
         while True:
@@ -299,7 +496,10 @@ async def main():
         pass
     finally:
         rtds_task.cancel()
+        if strike_task:
+            strike_task.cancel()
         await tracker.stop()
+        await _deribit.stop()
         print(f"\nStopped. {_tick_count} aligned ticks recorded.")
 
 
