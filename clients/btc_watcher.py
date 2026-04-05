@@ -1797,9 +1797,6 @@ class BtcStreamManager:
             else:
                 log.info("ROLL DONE: pm_ok=%s ks_ok=%s total=%.0fms", pm_ok, ks_ok, roll_elapsed * 1000)
 
-            # Reset oracle alignment buffer for the new window
-            self._oracle_buf.clear()
-
             await self._push_update(force=True)
 
             # Strike price may not be available immediately at window open.
