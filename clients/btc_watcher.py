@@ -419,6 +419,113 @@ def fetch_btc_snapshot() -> dict:
     }
 
 
+# ── Oracle Alignment Buffer ──────────────────────────────────────────────────
+
+from collections import deque
+from dataclasses import dataclass
+
+
+@dataclass
+class AlignedTick:
+    """A single time-aligned oracle observation."""
+    bin_ts: int             # 1-second bin timestamp (epoch seconds, floored)
+    brti_price: float       # BRTI value at this bin
+    brti_server_ts: float   # median exchange server timestamp for BRTI
+    chainlink_price: float  # Chainlink oracle price at this bin
+    chainlink_server_ts: float  # Chainlink oracle measurement timestamp
+    spread: float           # brti_price - chainlink_price
+    latency_brti: float     # local_ts - server_ts for BRTI (processing lag)
+    latency_chainlink: float  # local_ts - server_ts for Chainlink
+
+
+class OracleAlignmentBuffer:
+    """
+    Aligns BRTI and Chainlink oracle prices into 1-second bins.
+
+    Only emits an AlignedTick when both oracles have reported within the
+    same 1-second bin, preventing "ghost volatility" from stale pairing.
+
+    Usage:
+        buf = OracleAlignmentBuffer(max_ticks=900)
+        buf.update_brti(price, local_ts, server_ts)
+        buf.update_chainlink(price, local_ts, server_ts)
+        # buf.ticks contains aligned spread observations
+    """
+
+    TOLERANCE_S = 1.0  # max age difference within a bin
+
+    def __init__(self, max_ticks: int = 900):
+        self.ticks: deque[AlignedTick] = deque(maxlen=max_ticks)
+        # Pending values for current bin
+        self._brti: dict | None = None       # {price, local_ts, server_ts}
+        self._chainlink: dict | None = None  # {price, local_ts, server_ts}
+
+    def update_brti(self, price: float, local_ts: float, server_ts: float):
+        """Record a new BRTI observation and try to pair."""
+        self._brti = {"price": price, "local_ts": local_ts, "server_ts": server_ts}
+        self._try_pair()
+
+    def update_chainlink(self, price: float, local_ts: float, server_ts: float):
+        """Record a new Chainlink observation and try to pair."""
+        self._chainlink = {"price": price, "local_ts": local_ts, "server_ts": server_ts}
+        self._try_pair()
+
+    def _try_pair(self):
+        """If both oracles have fresh data in the same 1s bin, emit a tick."""
+        if not self._brti or not self._chainlink:
+            return
+
+        # Use server timestamps for alignment (the actual oracle measurement times)
+        brti_ts = self._brti["server_ts"] if self._brti["server_ts"] > 0 else self._brti["local_ts"]
+        cl_ts = self._chainlink["server_ts"] if self._chainlink["server_ts"] > 0 else self._chainlink["local_ts"]
+
+        # Check if they fall in the same 1-second bin
+        brti_bin = int(brti_ts)
+        cl_bin = int(cl_ts)
+
+        if abs(brti_bin - cl_bin) > 0:
+            # Different bins — keep the newer one, discard the older
+            return
+
+        # Same bin — emit aligned tick
+        tick = AlignedTick(
+            bin_ts=brti_bin,
+            brti_price=self._brti["price"],
+            brti_server_ts=self._brti["server_ts"],
+            chainlink_price=self._chainlink["price"],
+            chainlink_server_ts=self._chainlink["server_ts"],
+            spread=self._brti["price"] - self._chainlink["price"],
+            latency_brti=self._brti["local_ts"] - self._brti["server_ts"] if self._brti["server_ts"] > 0 else 0.0,
+            latency_chainlink=self._chainlink["local_ts"] - self._chainlink["server_ts"] if self._chainlink["server_ts"] > 0 else 0.0,
+        )
+
+        # Avoid duplicate bins
+        if self.ticks and self.ticks[-1].bin_ts == tick.bin_ts:
+            self.ticks[-1] = tick  # update in place
+        else:
+            self.ticks.append(tick)
+
+        # Clear pending so we don't re-emit
+        self._brti = None
+        self._chainlink = None
+
+    def get_spreads(self, n: int | None = None) -> list[float]:
+        """Return the last n spread values (or all if n is None)."""
+        if n is None:
+            return [t.spread for t in self.ticks]
+        return [t.spread for t in list(self.ticks)[-n:]]
+
+    def get_latest(self) -> AlignedTick | None:
+        """Return the most recent aligned tick, or None."""
+        return self.ticks[-1] if self.ticks else None
+
+    def clear(self):
+        """Reset buffer (e.g. on contract roll)."""
+        self.ticks.clear()
+        self._brti = None
+        self._chainlink = None
+
+
 # ── Live streaming manager ────────────────────────────────────────────────────
 
 
@@ -500,8 +607,13 @@ class BtcStreamManager:
 
         # Live BTC spot price feeds
         self._brti_price: float | None = None   # BRTI estimate (CF Benchmarks replication, Kalshi settlement source)
+        self._brti_server_ts: float = 0.0        # median exchange server timestamp for BRTI
+        self._brti_local_ts: float = 0.0         # local time.time() when BRTI was computed
         self._chainlink_price: float | None = None  # Chainlink BTC/USD via PM RTDS (PM settlement source)
+        self._chainlink_server_ts: float = 0.0   # Chainlink oracle measurement timestamp (epoch s)
+        self._chainlink_local_ts: float = 0.0    # local time.time() when RTDS message arrived
         self._brti_tracker = None  # BRTITracker instance
+        self._oracle_buf = OracleAlignmentBuffer(max_ticks=900)  # ~15 min of 1s ticks
 
         # Signals WS loops to reconnect with new tokens/tickers
         self._pm_user_reconnect = asyncio.Event()  # separate for user channel
@@ -799,6 +911,25 @@ class BtcStreamManager:
         self._ks_last_live_mark = 0.0
         self._ks_is_stale = True
 
+    def _get_oracle_aligned_summary(self) -> dict | None:
+        """Summary of oracle alignment buffer for snapshot."""
+        latest = self._oracle_buf.get_latest()
+        if not latest:
+            return None
+        n = len(self._oracle_buf.ticks)
+        spreads = self._oracle_buf.get_spreads()
+        avg_spread = sum(spreads) / n if n else 0.0
+        return {
+            "aligned_ticks": n,
+            "latest_spread": round(latest.spread, 4),
+            "avg_spread": round(avg_spread, 4),
+            "latest_brti": latest.brti_price,
+            "latest_chainlink": latest.chainlink_price,
+            "latency_brti_ms": round(latest.latency_brti * 1000, 1),
+            "latency_chainlink_ms": round(latest.latency_chainlink * 1000, 1),
+            "bin_ts": latest.bin_ts,
+        }
+
     # ── Kalshi: subscribe messages + message handler (fed by pool) ────────
 
     def _ks_subscribe_msgs(self) -> list[str]:
@@ -912,6 +1043,8 @@ class BtcStreamManager:
             "pm_stale": self._pm_stale_logged,
             "ks_uptime_pct": self._get_ks_uptime_pct(),
             "pm_uptime_pct": self._get_pm_uptime_pct(),
+            # Oracle alignment data for Model B
+            "oracle_aligned": self._get_oracle_aligned_summary(),
         }
         try:
             await self._on_update(snapshot)
@@ -1212,9 +1345,12 @@ class BtcStreamManager:
         from clients.brti_tracker import BRTITracker
         from config import COINBASE_CDP_API_KEY, COINBASE_CDP_API_SECRET
 
-        def on_brti_update(value, ts):
+        def on_brti_update(value, ts, server_ts=0.0):
             if value and value != self._brti_price:
                 self._brti_price = value
+                self._brti_local_ts = ts
+                self._brti_server_ts = server_ts
+                self._oracle_buf.update_brti(value, ts, server_ts)
                 asyncio.ensure_future(self._push_update())
 
         self._brti_tracker = BRTITracker(
@@ -1326,6 +1462,17 @@ class BtcStreamManager:
 
             if price and price != self._chainlink_price:
                 self._chainlink_price = price
+                self._chainlink_local_ts = time.time()
+                # payload.timestamp is Chainlink oracle measurement time (epoch ms)
+                cl_ts = payload.get("timestamp")
+                if cl_ts:
+                    try:
+                        self._chainlink_server_ts = int(cl_ts) / 1000.0
+                    except (TypeError, ValueError):
+                        pass
+                self._oracle_buf.update_chainlink(
+                    price, self._chainlink_local_ts, self._chainlink_server_ts,
+                )
                 await self._push_update()
 
     async def _rtds_ping_loop(self, ws):
@@ -1649,6 +1796,9 @@ class BtcStreamManager:
                 log.warning("ROLL PARTIAL: KS failed to return new contract (PM ok) after %.0fms", roll_elapsed)
             else:
                 log.info("ROLL DONE: pm_ok=%s ks_ok=%s total=%.0fms", pm_ok, ks_ok, roll_elapsed * 1000)
+
+            # Reset oracle alignment buffer for the new window
+            self._oracle_buf.clear()
 
             await self._push_update(force=True)
 

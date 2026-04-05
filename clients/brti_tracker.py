@@ -26,11 +26,28 @@ import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 import numpy as np
 import websockets
 
 log = logging.getLogger(__name__)
+
+
+def _parse_iso_ts(s: str) -> float:
+    """Parse ISO 8601 timestamp string to epoch seconds. Returns 0.0 on failure."""
+    try:
+        # Truncate nanosecond precision to microseconds for fromisoformat
+        if "." in s:
+            base, frac = s.split(".")
+            frac = frac.rstrip("Z")[:6]
+            s = f"{base}.{frac}+00:00"
+        elif s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        return datetime.fromisoformat(s).timestamp()
+    except Exception:
+        return 0.0
+
 
 # ── BRTI Parameters (from CF Benchmarks methodology §6) ─────────────────────
 
@@ -53,6 +70,7 @@ class OrderBook:
     bids: dict[float, float] = field(default_factory=dict)  # price -> size
     asks: dict[float, float] = field(default_factory=dict)  # price -> size
     last_update: float = 0.0
+    server_ts: float = 0.0  # exchange-provided timestamp (epoch seconds), 0 if unavailable
 
     def mid_price(self) -> float | None:
         if not self.bids or not self.asks:
@@ -106,6 +124,7 @@ class BRTITracker:
         # Output
         self.brti_value: float | None = None
         self.brti_time: float = 0.0
+        self.brti_server_ts: float = 0.0  # median exchange server timestamp
         self.settlement_buffer: list[float] = []  # rolling 60s of BRTI values
 
         # Control
@@ -169,6 +188,22 @@ class BRTITracker:
 
     # ── BRTI Computation (runs once per second) ──────────────────────────────
 
+    def _median_server_ts(self) -> float:
+        """Median server_ts from non-stale exchanges that have server timestamps."""
+        now = time.time()
+        ts_list = []
+        for ex in EXCHANGES:
+            book = self.books[ex]
+            if book.server_ts > 0 and not book.is_stale(now):
+                ts_list.append(book.server_ts)
+        if not ts_list:
+            return 0.0
+        ts_list.sort()
+        n = len(ts_list)
+        if n % 2 == 1:
+            return ts_list[n // 2]
+        return (ts_list[n // 2 - 1] + ts_list[n // 2]) / 2.0
+
     async def _compute_loop(self):
         """Compute BRTI once per second."""
         while self._running:
@@ -178,13 +213,14 @@ class BRTITracker:
                 if value is not None:
                     self.brti_value = value
                     self.brti_time = t0
+                    self.brti_server_ts = self._median_server_ts()
                     self.settlement_buffer.append(value)
                     # Keep only last 120 values (2 min buffer, need 60 for settlement)
                     if len(self.settlement_buffer) > 120:
                         self.settlement_buffer = self.settlement_buffer[-120:]
                     if self.on_update:
                         try:
-                            self.on_update(value, t0)
+                            self.on_update(value, t0, self.brti_server_ts)
                         except Exception:
                             log.exception("on_update callback error")
                 elapsed = time.time() - t0
@@ -657,6 +693,10 @@ class BRTITracker:
                     target[price] = size
 
         book.last_update = time.time()
+        # msg["timestamp"] is ISO e.g. "2026-04-05T04:31:36.028538426Z"
+        srv = _parse_iso_ts(msg.get("timestamp", ""))
+        if srv:
+            book.server_ts = srv
 
     # ── Exchange Feed: Kraken ────────────────────────────────────────────────
 
@@ -743,6 +783,12 @@ class BRTITracker:
                         book.asks[price] = qty
 
         book.last_update = time.time()
+        # Kraken: data[].timestamp is ISO e.g. "2026-04-05T04:31:03.726879Z"
+        for entry in data:
+            srv = _parse_iso_ts(entry.get("timestamp", ""))
+            if srv:
+                book.server_ts = srv
+                break
 
     # ── Exchange Feed: Bitstamp ──────────────────────────────────────────────
 
@@ -814,6 +860,13 @@ class BRTITracker:
                 book.asks[price] = size
 
         book.last_update = time.time()
+        # Bitstamp: data["microtimestamp"] is epoch microseconds
+        micro_ts = data.get("microtimestamp")
+        if micro_ts:
+            try:
+                book.server_ts = int(micro_ts) / 1_000_000.0
+            except (TypeError, ValueError):
+                pass
 
     # ── Exchange Feed: Gemini ────────────────────────────────────────────────
 
@@ -884,6 +937,7 @@ class BRTITracker:
                     book.asks[price] = size
 
         book.last_update = time.time()
+        # Gemini: no server timestamp in l2_updates messages
 
     # ── Exchange Feed: Crypto.com ────────────────────────────────────────────
 
@@ -960,6 +1014,15 @@ class BRTITracker:
                         book.asks[price] = size
 
         book.last_update = time.time()
+        # Crypto.com: data[].t is epoch ms
+        for entry in data:
+            t_ms = entry.get("t")
+            if t_ms:
+                try:
+                    book.server_ts = int(t_ms) / 1000.0
+                except (TypeError, ValueError):
+                    pass
+                break
 
     # ── Exchange Feed: Bullish ───────────────────────────────────────────────
 
@@ -1013,8 +1076,8 @@ class BRTITracker:
         if "result" in msg and "topic" not in msg.get("result", {}):
             return
 
-        # L2 data comes in params or result depending on message type
-        data = msg.get("params") or msg.get("result")
+        # L2 data comes in "data", "params", or "result" depending on message type
+        data = msg.get("data") or msg.get("params") or msg.get("result")
         if not data:
             return
 
@@ -1045,6 +1108,13 @@ class BRTITracker:
                     book.asks[price] = size
 
         book.last_update = time.time()
+        # Bullish: data["timestamp"] is epoch ms
+        ts_ms = data.get("timestamp")
+        if ts_ms:
+            try:
+                book.server_ts = int(ts_ms) / 1000.0
+            except (TypeError, ValueError):
+                pass
 
 
 # ── Standalone runner ────────────────────────────────────────────────────────
@@ -1061,8 +1131,7 @@ async def _main():
         datefmt="%H:%M:%S",
     )
 
-    def on_update(value, ts):
-        from datetime import datetime, timezone
+    def on_update(value, ts, server_ts=0.0):
         t = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%H:%M:%S")
         settlement = tracker.get_settlement_price()
         n_samples = len(tracker.settlement_buffer)

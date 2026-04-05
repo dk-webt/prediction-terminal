@@ -108,6 +108,16 @@ export interface BtcSnapshot {
   brti_active_exchanges?: number
   ks_uptime_pct?: number
   pm_uptime_pct?: number
+  oracle_aligned?: {
+    aligned_ticks: number
+    latest_spread: number
+    avg_spread: number
+    latest_brti: number
+    latest_chainlink: number
+    latency_brti_ms: number
+    latency_chainlink_ms: number
+    bin_ts: number
+  } | null
 }
 
 export interface BtcTimeSeriesPoint {

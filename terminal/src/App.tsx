@@ -837,6 +837,23 @@ export default function App() {
             } else {
               useStore.getState().setShowOrders(true)
             }
+          } else if (btcSub === 'GRAPHS') {
+            const graphsAction = (parts[2] || '').toUpperCase()
+            if (graphsAction === 'DBG') {
+              const explicit = (parts[3] || '').toUpperCase()
+              if (explicit === 'ON') {
+                useStore.getState().setShowBtcGraphsDbg(true)
+                setProgressMsg('Oracle alignment debug: ON')
+              } else if (explicit === 'OFF') {
+                useStore.getState().setShowBtcGraphsDbg(false)
+                setProgressMsg('Oracle alignment debug: OFF')
+              } else {
+                const cur = useStore.getState().showBtcGraphsDbg
+                useStore.getState().setShowBtcGraphsDbg(!cur)
+                setProgressMsg(`Oracle alignment debug: ${!cur ? 'ON' : 'OFF'}`)
+              }
+              setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
+            }
           } else if (btcSub === 'REFRESH') {
             const refreshMode = (parts[2] || '').toUpperCase()
             const hard = refreshMode === 'FORCE'

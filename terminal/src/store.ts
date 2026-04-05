@@ -49,6 +49,7 @@ interface TerminalState {
   showDetail: boolean
   showPositions: boolean
   showOrders: boolean
+  showBtcGraphsDbg: boolean
   positions: PositionsState
   recentOrders: TrackedOrder[]
 
@@ -95,6 +96,7 @@ interface TerminalState {
   setShowDetail: (v: boolean) => void
   setShowPositions: (v: boolean) => void
   setShowOrders: (v: boolean) => void
+  setShowBtcGraphsDbg: (v: boolean) => void
   setPositions: (v: Partial<PositionsState>) => void
   retireOrder: (orderId: string) => void
   clearRecentOrders: () => void
@@ -144,6 +146,7 @@ export const useStore = create<TerminalState>((set) => ({
   showDetail: true,
   showPositions: true,
   showOrders: true,
+  showBtcGraphsDbg: false,
   positions: { kalshi: [], polymarket: [], loading: false, error: null, lastFetched: 0 },
   recentOrders: [],
   activeView: 'IDLE',
@@ -189,6 +192,7 @@ export const useStore = create<TerminalState>((set) => ({
   setShowDetail: (showDetail) => set({ showDetail }),
   setShowPositions: (showPositions) => set({ showPositions }),
   setShowOrders: (showOrders) => set({ showOrders }),
+  setShowBtcGraphsDbg: (showBtcGraphsDbg) => set({ showBtcGraphsDbg }),
   setPositions: (v) => set((s) => ({ positions: { ...s.positions, ...v } })),
   retireOrder: (orderId) => set((s) => {
     const order = s.activeOrders.get(orderId)

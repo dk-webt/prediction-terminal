@@ -61,6 +61,58 @@ function PlatformStatusDot({ lastUpdate }: { lastUpdate: string | undefined }) {
   )
 }
 
+function OracleAlignmentDbg({ snapshot }: { snapshot: BtcSnapshot }) {
+  const show = useStore((s) => s.showBtcGraphsDbg)
+  if (!show) return null
+
+  const oa = snapshot.oracle_aligned
+  if (!oa) {
+    return (
+      <div className="btc-debug-section">
+        <div className="btc-section-title" style={{ color: '#ff6600' }}>ORACLE ALIGNMENT DEBUG</div>
+        <span className="btc-dim">Waiting for aligned ticks (BRTI + Chainlink in same 1s bin)...</span>
+      </div>
+    )
+  }
+
+  const spreadColor = Math.abs(oa.latest_spread) > 5 ? '#ff4444' : Math.abs(oa.latest_spread) > 2 ? '#ffaa00' : '#00cc44'
+  const brtiLat = oa.latency_brti_ms
+  const clLat = oa.latency_chainlink_ms
+  const brtiLatColor = brtiLat > 500 ? '#ff4444' : brtiLat > 200 ? '#ffaa00' : '#00cc44'
+  const clLatColor = clLat > 1500 ? '#ff4444' : clLat > 800 ? '#ffaa00' : '#00cc44'
+  const binTime = new Date(oa.bin_ts * 1000).toLocaleTimeString()
+
+  return (
+    <div className="btc-debug-section">
+      <div className="btc-section-title" style={{ color: '#ff6600' }}>
+        ORACLE ALIGNMENT DEBUG — {oa.aligned_ticks} aligned ticks
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: 11 }}>
+        <span className="btc-dim">Latest Spread (BRTI − CL):</span>
+        <span style={{ color: spreadColor, fontFamily: 'monospace' }}>${oa.latest_spread.toFixed(4)}</span>
+
+        <span className="btc-dim">Avg Spread:</span>
+        <span style={{ fontFamily: 'monospace' }}>${oa.avg_spread.toFixed(4)}</span>
+
+        <span className="btc-dim">BRTI Price:</span>
+        <span style={{ fontFamily: 'monospace' }}>${oa.latest_brti.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+
+        <span className="btc-dim">Chainlink Price:</span>
+        <span style={{ fontFamily: 'monospace' }}>${oa.latest_chainlink.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+
+        <span className="btc-dim">BRTI Latency (local−server):</span>
+        <span style={{ color: brtiLatColor, fontFamily: 'monospace' }}>{brtiLat.toFixed(0)}ms</span>
+
+        <span className="btc-dim">Chainlink Latency (local−server):</span>
+        <span style={{ color: clLatColor, fontFamily: 'monospace' }}>{clLat.toFixed(0)}ms</span>
+
+        <span className="btc-dim">Last Bin:</span>
+        <span style={{ fontFamily: 'monospace' }}>{binTime}</span>
+      </div>
+    </div>
+  )
+}
+
 function BtcFooter({ snapshot }: { snapshot: BtcSnapshot }) {
   const { label, color } = useLiveStatus(snapshot)
 
@@ -583,6 +635,8 @@ export default function BtcPanel() {
         <BtcSpotChart field="coinbase" title={`KALSHI SOURCE: BRTI ESTIMATE (${btcSnapshot.brti_active_exchanges ?? '?'} of 6)`} color="#ffcc44" />
         <BtcSpotChart field="chainlink" title="PM SOURCE: CHAINLINK BTC/USD" color="#00cc44" />
       </div>
+
+      <OracleAlignmentDbg snapshot={btcSnapshot} />
 
       <BtcFooter snapshot={btcSnapshot} />
     </div>

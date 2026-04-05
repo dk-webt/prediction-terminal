@@ -646,6 +646,20 @@ html, body, #root {
   border-bottom: 1px solid var(--border);
 }
 
+.btc-debug-section {
+  padding: 6px 8px;
+  border: 1px solid #ff660044;
+  background: #1a0e0088;
+  margin: 4px;
+}
+
+.btc-debug-section .btc-section-title {
+  font-size: 10px;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+  font-weight: bold;
+}
+
 .btc-footer {
   padding: 4px 8px;
   border-top: 1px solid var(--border);
