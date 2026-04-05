@@ -8,6 +8,7 @@ aligns prices into 1-second bins, and prints each aligned tick.
 Usage:
   python3 scripts/oracle_spread_live.py
   python3 scripts/oracle_spread_live.py --no-header   # skip column header
+  python3 scripts/oracle_spread_live.py --adf 30       # ADF every 30s (default: 60s)
 """
 
 import asyncio
@@ -23,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import COINBASE_CDP_API_KEY, COINBASE_CDP_API_SECRET
 from clients.brti_tracker import BRTITracker
+from clients.oracle_model import SpreadAnalyzer
 
 PM_RTDS_URL = "wss://ws-live-data.polymarket.com"
 
@@ -32,6 +34,9 @@ _brti_pending: dict | None = None      # {price, local_ts, server_ts}
 _chainlink_pending: dict | None = None  # {price, local_ts, server_ts}
 _last_bin: int = 0
 _tick_count: int = 0
+_analyzer = SpreadAnalyzer(window_s=1200)  # 20-min rolling window
+_last_adf_time: float = 0.0
+_adf_interval: float = 60.0  # seconds between ADF prints
 
 
 def _try_pair():
@@ -72,8 +77,93 @@ def _try_pair():
         flush=True,
     )
 
+    # Feed the spread analyzer
+    _analyzer.add_tick(brti_bin, spread)
+
+    # Periodic ADF + OU calibration
+    _maybe_print_stats()
+
     _brti_pending = None
     _chainlink_pending = None
+
+
+def _maybe_print_stats():
+    """Print ADF + OU results if enough time has passed."""
+    global _last_adf_time
+    now = time.time()
+    if now - _last_adf_time < _adf_interval:
+        return
+    _last_adf_time = now
+
+    # ── ADF test (20-min window) ──
+    adf = _analyzer.compute_adf()
+    if adf is None:
+        span = _analyzer.window_span_s
+        print(
+            f"  ┌─ ADF: insufficient data ({_analyzer.n_raw} raw ticks, {span}s span, "
+            f"need ≥60 filled observations)",
+            flush=True,
+        )
+        return
+
+    status = "\033[32mSTATIONARY ✓\033[0m" if adf.is_stationary else "\033[31mNON-STATIONARY ✗\033[0m"
+    print(
+        f"  ┌─ ADF TEST ({adf.n_obs} obs, {adf.n_raw} raw, {adf.fill_pct:.0f}% filled, "
+        f"{_analyzer.window_span_s}s window)",
+        flush=True,
+    )
+    print(
+        f"  │  Statistic: {adf.statistic:>8.4f}  "
+        f"p-value: {adf.pvalue:.6f}  "
+        f"→ {status}",
+        flush=True,
+    )
+    print(
+        f"  │  Critical: 1%={adf.critical_values.get('1%', 0):.4f}  "
+        f"5%={adf.critical_values.get('5%', 0):.4f}  "
+        f"10%={adf.critical_values.get('10%', 0):.4f}",
+        flush=True,
+    )
+
+    # ── OU calibration (10-min window) ──
+    ou = _analyzer.compute_ou(window_s=600)
+    if ou is None:
+        print(
+            f"  └─ OU: insufficient data or b out of range",
+            flush=True,
+        )
+        return
+
+    hl_color = "\033[32m" if ou.half_life_s < 300 else "\033[33m" if ou.half_life_s < 600 else "\033[31m"
+    print(
+        f"  ├─ OU PARAMS (10-min window, {ou.n_obs} obs)",
+        flush=True,
+    )
+    print(
+        f"  │  θ (theta):    {ou.theta:.6f}/s  "
+        f"(speed of reversion)",
+        flush=True,
+    )
+    print(
+        f"  │  μ (mu):      ${ou.mu:+.4f}  "
+        f"(long-term equilibrium spread)",
+        flush=True,
+    )
+    print(
+        f"  │  σ (sigma):   ${ou.sigma:.4f}/√s  "
+        f"(spread volatility)",
+        flush=True,
+    )
+    print(
+        f"  │  Half-life:   {hl_color}{ou.half_life_s:.1f}s\033[0m  "
+        f"({ou.half_life_s/60:.1f} min)",
+        flush=True,
+    )
+    print(
+        f"  └─ AR(1): a={ou.a:.6f}  b={ou.b:.6f}  "
+        f"std(ε)=${ou.residual_std:.4f}",
+        flush=True,
+    )
 
 
 # ── BRTI callback ───────────────────────────────────────────────────────────
@@ -162,7 +252,17 @@ async def rtds_loop():
 # ── Main ────────────────────────────────────────────────────────────────────
 
 async def main():
+    global _adf_interval
     show_header = "--no-header" not in sys.argv
+
+    # Parse --adf N (interval in seconds)
+    if "--adf" in sys.argv:
+        idx = sys.argv.index("--adf")
+        if idx + 1 < len(sys.argv):
+            try:
+                _adf_interval = float(sys.argv[idx + 1])
+            except ValueError:
+                pass
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
 
