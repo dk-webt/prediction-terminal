@@ -11,6 +11,8 @@ Prediction Market Terminal: Bloomberg-style Electron desktop app for cross-platf
 - **Matching**: Gemini embeddings (V2 rich matcher with composite scoring, V1 fuzzy fallback)
 - **Trading**: Kalshi RSA-PSS auth, Polymarket py-clob-client (Safe wallet, signature_type=2 GNOSIS_SAFE)
 - **Live Pricing**: RedundantWSPool (N=2 parallel connections with dedup), BRTI tracker (6 exchange feeds)
+- **Quant Models**: Model A (Black-Scholes d2), Model B (OU process), Model C (t-Copula), Model D (friction-adjusted EV)
+- **IV Source**: Deribit DVOL + 0DTE ATM option IV, polled every 5 min
 
 ## Key Commands
 
@@ -24,6 +26,15 @@ cd /home/dastiger/prediciton/terminal && npm run dev
 # Install deps
 python3 -m pip install -r requirements.txt --break-system-packages
 cd terminal && npm install
+
+# Oracle spread + model live monitor
+python3 scripts/oracle_spread_live.py              # full output: all models, ADF every 10s
+python3 scripts/oracle_spread_live.py --adf 30     # model output every 30s
+python3 scripts/oracle_spread_live.py --no-strikes  # disable Model A/C/D
+
+# Deribit IV → 15-min sigma
+python3 scripts/deribit_sigma.py              # one-shot fetch
+python3 scripts/deribit_sigma.py --loop 60    # refresh every 60s
 
 # PM stream test harness (no API keys needed)
 python3 tests/test_pm_stream.py              # 2 redundant connections
@@ -49,11 +60,15 @@ prediciton/
     polymarket.py        # PM event/market fetch + normalization
     kalshi.py            # KS event/market fetch + normalization
     embeddings.py        # Gemini embedding API client with rate-limit handling
+    oracle_model.py      # Quant models A/B/C/D: pricing, OU process, copula, EV
+    deribit.py           # DeribitPoller — async IV polling (DVOL + 0DTE ATM)
   matchers/
     protocol.py          # EventMatcher protocol (runtime_checkable)
     v1.py                # GeminiFuzzyMatcher (embeddings + rapidfuzz fallback)
     v2.py                # GeminiRichMatcher (rich embeddings + composite scoring + cache)
   scripts/
+    oracle_spread_live.py  # Live aligned oracle spread + all model outputs
+    deribit_sigma.py     # Deribit IV → 15-min sigma (standalone)
     pm_latency_test.py   # PM WebSocket latency testing
     pm_orderbook_monitor.py  # PM orderbook depth monitor
     strike_poll_test.py  # PM strike price polling test
@@ -166,6 +181,45 @@ PM CLOB WebSocket has TWO different subscription message formats:
 - PM strike price: fetched from `https://polymarket.com/api/crypto/crypto-price` — appears ~8s after window start, settles immediately (no drift)
 - REST OB refresh loop every 5s corrects WS state drift (skipped during rolls)
 
+### Quantitative Models (`clients/oracle_model.py`)
+
+Four-model pipeline for BTC 15-min binary spread arbitrage. All models are owned by `ModelOrchestrator`, computed every 10s, and accessible via `BtcStreamManager.get_model_state()`.
+
+**Model A — Individual Leg Pricing (Modified Black-Scholes)**
+- Computes P(BTC > strike) per platform using d2 component of BS (risk-free rate zeroed)
+- `d2 = [ln(S/K) - σ²τ/2] / (σ√τ)` where S=oracle price, K=strike, τ=time remaining (0-1), σ=15m IV
+- Uses `math.erf` for normal CDF (no scipy dependency)
+- σ_15m from Deribit IV poller (0DTE ATM preferred, DVOL fallback)
+
+**Model B — Oracle Divergence (Ornstein-Uhlenbeck Process)**
+- `SpreadAnalyzer`: rolling 20-min window with forward-fill to 1s intervals
+- ADF test for stationarity (reject random walk if p < 0.05)
+- AR(1) regression → θ (reversion speed), μ (equilibrium), σ_spread (volatility)
+- Half-life = ln(2)/θ — reject trade if half-life > time to expiry
+
+**Model C — Joint Probability (Student's t-Copula)**
+- Binds Model A marginals using t-Copula with calibrated ρ and ν
+- Two-Step Inversion: Kendall's τ on 30s sub-sampled returns → ρ = sin(π/2·τ) → 1D MLE for ν
+- Sub-sampling avoids both microstructure noise (1s) and collinearity (levels)
+- ν capped at 30, defaults to 4 if MLE fails — conservative for crypto tails
+- Output: P(WW), P(WL), P(LW), P(LL) per strategy
+
+**Model D — Execution Logic (Friction-Adjusted EV)**
+- `EV = P(WW)×(2-cost-fees) + P(WL)×(1-cost-fees) + P(LW)×(1-cost-fees) - P(LL)×(cost+fees)`
+- 5 gate checks: ADF stationary, half-life < time remaining, >59s to expiry, Model C available, EV > $0.02
+- Kalshi taker fee: 7c/contract; PM fee from token metadata (default 2%)
+- Not yet wired to ATE — `get_model_state()` API ready for integration
+
+**Oracle Alignment Buffer** (`OracleAlignmentBuffer` in `btc_watcher.py`)
+- Pairs BRTI and Chainlink prices into 1-second bins (server timestamps)
+- Extracts server timestamps from all 6 BRTI exchange feeds + Chainlink RTDS
+- Continuous across contract rolls (oracle feeds don't pause)
+- `on_tick` callback feeds `ModelOrchestrator` automatically
+
+**Terminal Debug** (`BTC GRAPHS DBG` command)
+- Shows all model outputs: ADF/OU, per-platform probabilities, copula params, joint outcomes, EV, gate checks, trade signal
+- Updates every 10s (copula calibration is expensive)
+
 ### Two-Level Semantic Matching
 - **V2 (default)**: `GeminiRichMatcher` — rich text embeddings + composite scoring (70% cosine, 30% structural)
 - **V1 (fallback)**: `GeminiFuzzyMatcher` — basic embeddings + rapidfuzz token_sort_ratio fallback
@@ -180,6 +234,7 @@ PM CLOB WebSocket has TWO different subscription message formats:
 - Adaptive sizing: executes min(available, `ATE_MAX_COUNT=10`) contracts
 - Unwind logic for one-leg failures (immediate market sell to close)
 - Prevents execution <59s to settlement
+- **Model D integration pending**: `BtcStreamManager.get_model_state()` provides `ModelDResult` with friction-adjusted EV and 5 gate checks — ready to replace the simple profit threshold
 
 ### Trading (`clients/executor.py`)
 - Kalshi: `POST /trade-api/v2/portfolio/orders` with RSA-PSS signed headers
