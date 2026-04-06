@@ -850,7 +850,7 @@ class SpreadAnalyzer:
         return ADFResult(
             statistic=round(adf_stat, 4),
             pvalue=round(pvalue, 6),
-            is_stationary=pvalue < ADF_PVALUE_THRESHOLD,
+            is_stationary=bool(pvalue < ADF_PVALUE_THRESHOLD),
             n_obs=len(spreads),
             n_raw=n_raw,
             fill_pct=round(fill_pct, 1),
@@ -1012,12 +1012,12 @@ class ModelState:
             d["model_a_pm"] = {"p_above": sf(self.model_a_pm.p_above), "p_below": sf(self.model_a_pm.p_below), "d2": sf(self.model_a_pm.d2)}
         # Model B
         if self.adf:
-            d["adf"] = {"statistic": sf(self.adf.statistic), "pvalue": sf(self.adf.pvalue), "is_stationary": self.adf.is_stationary, "n_obs": self.adf.n_obs}
+            d["adf"] = {"statistic": sf(self.adf.statistic), "pvalue": sf(self.adf.pvalue), "is_stationary": bool(self.adf.is_stationary), "n_obs": int(self.adf.n_obs)}
         if self.ou:
             d["ou"] = {"theta": sf(self.ou.theta), "mu": sf(self.ou.mu), "sigma": sf(self.ou.sigma), "half_life_s": sf(self.ou.half_life_s)}
         # Model C
         if self.copula:
-            d["copula"] = {"rho": sf(self.copula.rho), "nu": sf(self.copula.nu), "kendall_tau": sf(self.copula.kendall_tau), "n_obs": self.copula.n_obs}
+            d["copula"] = {"rho": sf(self.copula.rho), "nu": sf(self.copula.nu), "kendall_tau": sf(self.copula.kendall_tau), "n_obs": int(self.copula.n_obs)}
         if self.model_c_a:
             d["model_c_a"] = {"p_ww": sf(self.model_c_a.p_ww), "p_wl": sf(self.model_c_a.p_wl), "p_lw": sf(self.model_c_a.p_lw), "p_ll": sf(self.model_c_a.p_ll)}
         if self.model_c_b:
@@ -1025,11 +1025,11 @@ class ModelState:
         # Model D
         if self.model_d:
             md = self.model_d
-            gates_dict = {k: {"passed": v[0], "reason": v[1]} for k, v in md.gates.items()}
+            gates_dict = {k: {"passed": bool(v[0]), "reason": str(v[1])} for k, v in md.gates.items()}
             d["model_d"] = {
                 "ev_a": sf(md.ev_a), "ev_b": sf(md.ev_b), "chosen": md.chosen, "ev": sf(md.ev),
                 "cost": sf(md.cost), "fee_ks": sf(md.fee_ks), "fee_pm": sf(md.fee_pm),
-                "gates": gates_dict, "all_gates_passed": md.all_gates_passed,
+                "gates": gates_dict, "all_gates_passed": bool(md.all_gates_passed),
             }
         return d
 
