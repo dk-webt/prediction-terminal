@@ -734,6 +734,7 @@ class BtcStreamManager:
         ))
         await self._pm_pool.start()
         self._tasks.append(asyncio.create_task(self._pm_ob_refresh_loop()))
+        self._tasks.append(asyncio.create_task(self._ks_ob_refresh_loop()))
         self._tasks.append(asyncio.create_task(self._coinbase_ws_loop()))
         self._tasks.append(asyncio.create_task(self._rtds_ws_loop()))
         self._tasks.append(asyncio.create_task(self._window_roll_loop()))
@@ -1344,6 +1345,79 @@ class BtcStreamManager:
             best = max(thick) if thick else max(ob.keys())
             self._kalshi_data["no_bid"] = best
             self._kalshi_data["yes_ask"] = round(1.0 - best, 4)
+
+    # ── Kalshi: periodic REST orderbook refresh (anti-drift) ──────────────────
+
+    KS_OB_REFRESH_INTERVAL = 5  # seconds — periodic REST orderbook refresh
+
+    async def _ks_ob_refresh_loop(self):
+        """Periodically fetch KS orderbook via REST to correct WS delta drift.
+        The WS orderbook_delta events can accumulate errors over time (missed
+        messages during reconnects). This loop resets the full book every 5s.
+        """
+        while self._running:
+            try:
+                await asyncio.sleep(self.KS_OB_REFRESH_INTERVAL)
+
+                if not self._kalshi_ticker or not self._kalshi_data:
+                    continue
+                if self._rolling:
+                    continue
+
+                ticker = self._kalshi_ticker
+                ob_data = await asyncio.to_thread(self._fetch_ks_orderbook, ticker)
+                if not ob_data:
+                    continue
+
+                yes_levels = ob_data.get("yes_dollars", [])
+                no_levels = ob_data.get("no_dollars", [])
+
+                # Full reset of orderbook mirror
+                new_yes = {float(p): float(s) for p, s in yes_levels if float(s) > 0}
+                new_no = {float(p): float(s) for p, s in no_levels if float(s) > 0}
+
+                changed = (new_yes != self._ks_ob_yes or new_no != self._ks_ob_no)
+                self._ks_ob_yes = new_yes
+                self._ks_ob_no = new_no
+
+                # Derive best bid/ask
+                min_sz = self.MIN_BOOK_SIZE
+                if self._ks_ob_yes:
+                    thick = [p for p, s in self._ks_ob_yes.items() if s >= min_sz]
+                    yes_bid = max(thick) if thick else max(self._ks_ob_yes.keys())
+                    self._kalshi_data["yes_bid"] = yes_bid
+                    self._kalshi_data["no_ask"] = round(1.0 - yes_bid, 4)
+                if self._ks_ob_no:
+                    thick = [p for p, s in self._ks_ob_no.items() if s >= min_sz]
+                    no_bid = max(thick) if thick else max(self._ks_ob_no.keys())
+                    self._kalshi_data["no_bid"] = no_bid
+                    self._kalshi_data["yes_ask"] = round(1.0 - no_bid, 4)
+
+                if changed:
+                    log.debug("KS OB REFRESH: yes=%d levels, no=%d levels",
+                              len(self._ks_ob_yes), len(self._ks_ob_no))
+                    self._mark_ks_recv()
+                    await self._push_update()
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.warning("KS OB refresh error: %s", e)
+
+    @staticmethod
+    def _fetch_ks_orderbook(ticker: str) -> dict | None:
+        """Fetch Kalshi orderbook via REST (runs in thread)."""
+        try:
+            resp = requests.get(
+                f"{KALSHI_BASE}/markets/{ticker}/orderbook",
+                headers=_kalshi_headers(),
+                timeout=5,
+            )
+            resp.raise_for_status()
+            return resp.json().get("orderbook_fp", {})
+        except Exception as e:
+            log.debug("KS OB REST fetch failed: %s", e)
+            return None
 
     # ── Polymarket: message handler (fed by RedundantWSPool) ─────────────────
 
