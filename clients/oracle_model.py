@@ -350,9 +350,9 @@ def compute_rolling_correlation(
 class CopulaCalibration:
     """Calibrated t-Copula parameters from Two-Step Inversion."""
     rho: float            # copula correlation (from Greiner's relation)
-    nu: float             # degrees of freedom (from 1D MLE, clamped to [2, 100])
-    kendall_tau: float    # Kendall's tau (rank correlation)
-    n_obs: int            # number of paired observations used
+    nu: float             # degrees of freedom (from 1D MLE, capped at 30)
+    kendall_tau: float    # Kendall's tau (rank correlation on sub-sampled returns)
+    n_obs: int            # number of sub-sampled return pairs used
     log_likelihood: float # log-likelihood at optimal nu
 
 
@@ -423,57 +423,77 @@ def _t_copula_log_likelihood(
     return ll if np.isfinite(ll) else -1e10
 
 
+COPULA_SUBSAMPLE_S = 30    # downsample interval for copula calibration (seconds)
+COPULA_MIN_RETURNS = 10    # minimum sub-sampled returns needed
+COPULA_NU_CAP = 30         # cap ν to stay conservative on tails
+COPULA_NU_DEFAULT = 4      # fallback ν if MLE fails to converge
+
+
 def calibrate_copula(
     brti_prices: np.ndarray,
     chainlink_prices: np.ndarray,
+    subsample_s: int = COPULA_SUBSAMPLE_S,
 ) -> CopulaCalibration | None:
     """
-    Two-Step Inversion calibration for the t-Copula.
+    Two-Step Inversion calibration for the t-Copula using sub-sampled returns.
 
-    Step 1: Compute Kendall's tau on log-returns.
-    Step 2: Invert via Greiner's relation: ρ = sin(π/2 · τ).
-    Step 3: 1D grid search for optimal ν (degrees of freedom).
+    Instead of 1-second returns (microstructure noise) or price levels
+    (collinearity), we downsample to 30s/60s returns that match the
+    contract horizon and reveal true directional dependence.
+
+    Step 1: Downsample 1s aligned prices to subsample_s intervals.
+    Step 2: Compute log returns on the downsampled series.
+    Step 3: Compute Kendall's tau on sub-sampled returns.
+    Step 4: Invert via Greiner's relation: ρ = sin(π/2 · τ).
+    Step 5: 1D MLE for ν on the sub-sampled pseudo-observations.
+    Step 6: Safety cap ν at 30; default to 4 if MLE fails.
 
     Args:
-        brti_prices: aligned BRTI price array
-        chainlink_prices: aligned Chainlink price array
+        brti_prices: aligned BRTI price array (1s intervals)
+        chainlink_prices: aligned Chainlink price array (1s intervals)
+        subsample_s: downsample interval in seconds (default 30)
 
     Returns CopulaCalibration or None if insufficient data.
     """
-    if len(brti_prices) < 30 or len(brti_prices) != len(chainlink_prices):
+    n_raw = len(brti_prices)
+    if n_raw < subsample_s * 2 or len(brti_prices) != len(chainlink_prices):
         return None
 
-    # Log returns
-    brti_ret = np.diff(np.log(brti_prices))
-    cl_ret = np.diff(np.log(chainlink_prices))
+    # Downsample: take every subsample_s-th price
+    brti_ds = brti_prices[::subsample_s]
+    cl_ds = chainlink_prices[::subsample_s]
+
+    if len(brti_ds) < 3:
+        return None
+
+    # Log returns on downsampled series
+    brti_ret = np.diff(np.log(brti_ds))
+    cl_ret = np.diff(np.log(cl_ds))
 
     valid = np.isfinite(brti_ret) & np.isfinite(cl_ret)
     brti_ret = brti_ret[valid]
     cl_ret = cl_ret[valid]
 
-    if len(brti_ret) < 20:
+    if len(brti_ret) < COPULA_MIN_RETURNS:
         return None
 
-    # Step 1: Kendall's tau
+    # Step 3: Kendall's tau on sub-sampled returns
     tau = _kendall_tau(brti_ret, cl_ret)
 
-    # Step 2: Greiner's relation
+    # Step 4: Greiner's relation
     rho = math.sin(math.pi / 2.0 * tau)
     rho = max(-0.9999, min(0.9999, rho))
 
     # Transform returns to uniform marginals via empirical CDF (pseudo-observations)
     n = len(brti_ret)
-    u = np.argsort(np.argsort(brti_ret)).astype(float) / n
-    v = np.argsort(np.argsort(cl_ret)).astype(float) / n
-    # Clamp away from 0 and 1
-    u = np.clip(u, 0.001, 0.999)
-    v = np.clip(v, 0.001, 0.999)
+    u = (np.argsort(np.argsort(brti_ret)).astype(float) + 1) / (n + 1)
+    v = (np.argsort(np.argsort(cl_ret)).astype(float) + 1) / (n + 1)
 
-    # Step 3: 1D grid search for nu
-    best_nu = 5.0
+    # Step 5: 1D grid search for nu
+    best_nu = float(COPULA_NU_DEFAULT)
     best_ll = -1e10
 
-    for nu_candidate in [2.5, 3, 4, 5, 7, 10, 15, 20, 30, 50]:
+    for nu_candidate in [2.5, 3, 4, 5, 7, 10, 15, 20, 30]:
         ll = _t_copula_log_likelihood(u, v, rho, nu_candidate)
         if ll > best_ll:
             best_ll = ll
@@ -481,12 +501,19 @@ def calibrate_copula(
 
     # Refine around best with finer grid
     lo = max(2.1, best_nu - 2)
-    hi = best_nu + 2
+    hi = min(COPULA_NU_CAP, best_nu + 2)
     for nu_candidate in np.linspace(lo, hi, 20):
         ll = _t_copula_log_likelihood(u, v, rho, float(nu_candidate))
         if ll > best_ll:
             best_ll = ll
             best_nu = float(nu_candidate)
+
+    # Step 6: Safety cap
+    if best_nu > COPULA_NU_CAP:
+        best_nu = float(COPULA_NU_CAP)
+    if best_ll <= -1e9:
+        # MLE failed to converge — use conservative default
+        best_nu = float(COPULA_NU_DEFAULT)
 
     return CopulaCalibration(
         rho=round(rho, 6),

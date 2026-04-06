@@ -283,10 +283,11 @@ def _print_model_c(p_ks_above: float, p_pm_above: float):
     strat_b = model_c_joint(p_ks_above, p_pm_above, cal.rho, cal.nu, strategy="B")
 
     rho_color = "\033[32m" if cal.rho > 0.8 else "\033[33m" if cal.rho > 0.5 else "\033[31m"
-    nu_color = "\033[33m" if cal.nu < 5 else "\033[0m"
+    nu_color = "\033[33m" if cal.nu <= 5 else "\033[0m"
     print(
         f"  ├─ MODEL C (τ={cal.kendall_tau:+.4f}, ρ={rho_color}{cal.rho:+.4f}\033[0m, "
-        f"ν={nu_color}{cal.nu:.1f}\033[0m, LL={cal.log_likelihood:.1f}, {cal.n_obs} obs)",
+        f"ν={nu_color}{cal.nu:.1f}\033[0m, LL={cal.log_likelihood:.1f}, "
+        f"{cal.n_obs} returns @30s)",
         flush=True,
     )
 
