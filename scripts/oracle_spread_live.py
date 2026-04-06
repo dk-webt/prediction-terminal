@@ -28,6 +28,7 @@ from clients.brti_tracker import BRTITracker
 from clients.deribit import DeribitPoller
 from clients.oracle_model import (
     SpreadAnalyzer, model_a_both_platforms, model_c_joint, calibrate_copula,
+    model_d_execute, StrategyPrices,
 )
 
 PM_RTDS_URL = "wss://ws-live-data.polymarket.com"
@@ -51,6 +52,12 @@ _adf_interval: float = 10.0  # seconds between ADF/OU/Model A/C prints
 _ks_strike: float = 0.0
 _pm_strike: float = 0.0
 _window_end_ts: float = 0.0  # epoch seconds when current window expires
+
+# Ask prices for Model D (fetched alongside strikes)
+_ks_yes_ask: float = 0.0
+_ks_no_ask: float = 0.0
+_pm_up_ask: float = 0.0
+_pm_down_ask: float = 0.0
 
 
 def _try_pair():
@@ -303,9 +310,75 @@ def _print_model_c(p_ks_above: float, p_pm_above: float):
     # Strategy B
     ll_color_b = "\033[32m" if strat_b.p_ll < 0.05 else "\033[33m" if strat_b.p_ll < 0.15 else "\033[31m"
     print(
-        f"  └─ Strat B (KS NO  + PM YES): "
+        f"  ├─ Strat B (KS NO  + PM YES): "
         f"WW={strat_b.p_ww:.4f}  WL={strat_b.p_wl:.4f}  LW={strat_b.p_lw:.4f}  "
         f"LL={ll_color_b}{strat_b.p_ll:.4f}\033[0m",
+        flush=True,
+    )
+
+    # ── Model D: execution decision ──
+    _print_model_d(p_ks_above, p_pm_above, strat_a, strat_b)
+
+
+def _print_model_d(p_ks_above, p_pm_above, strat_a, strat_b):
+    """Print Model D execution decision."""
+    if _ks_yes_ask <= 0 and _pm_down_ask <= 0:
+        print(f"  └─ MODEL D: no ask prices available", flush=True)
+        return
+
+    adf = _analyzer.compute_adf()
+    ou = _analyzer.compute_ou(window_s=600)
+
+    # Compute tau
+    tau = None
+    if _window_end_ts > 0:
+        remaining = max(0, _window_end_ts - time.time())
+        tau = min(1.0, remaining / (15 * 60))
+
+    prices_a = StrategyPrices(
+        ks_ask=_ks_yes_ask, pm_ask=_pm_down_ask,
+        ks_side="yes", pm_side="down",
+    )
+    prices_b = StrategyPrices(
+        ks_ask=_ks_no_ask, pm_ask=_pm_up_ask,
+        ks_side="no", pm_side="up",
+    )
+
+    d = model_d_execute(
+        model_c_a=strat_a, model_c_b=strat_b,
+        prices_a=prices_a, prices_b=prices_b,
+        fee_pm_bps=200.0,
+        adf=adf, ou=ou, tau=tau,
+    )
+
+    # Gate status line
+    gate_parts = []
+    for name, (passed, reason) in d.gates.items():
+        icon = "\033[32m✓\033[0m" if passed else "\033[31m✗\033[0m"
+        gate_parts.append(f"{name}:{icon}")
+    gates_str = " ".join(gate_parts)
+
+    # EV display
+    ev_a_str = f"${d.ev_a:+.4f}" if d.ev_a > -100 else "N/A"
+    ev_b_str = f"${d.ev_b:+.4f}" if d.ev_b > -100 else "N/A"
+
+    if d.all_gates_passed and d.chosen:
+        signal = f"\033[32m>>> TRADE {d.chosen} <<<\033[0m"
+        cost_str = f"cost=${d.cost:.4f} fee_ks=${d.fee_ks:.4f} fee_pm=${d.fee_pm:.4f}"
+    else:
+        signal = "\033[31mNO TRADE\033[0m"
+        cost_str = f"A: KS_yes={_ks_yes_ask:.4f}+PM_down={_pm_down_ask:.4f} | B: KS_no={_ks_no_ask:.4f}+PM_up={_pm_up_ask:.4f}"
+
+    print(
+        f"  ├─ MODEL D  EV_A={ev_a_str}  EV_B={ev_b_str}  → {signal}",
+        flush=True,
+    )
+    print(
+        f"  │  Gates: {gates_str}",
+        flush=True,
+    )
+    print(
+        f"  └─ {cost_str}",
         flush=True,
     )
 
@@ -396,8 +469,9 @@ async def rtds_loop():
 # ── Main ────────────────────────────────────────────────────────────────────
 
 def _fetch_strikes():
-    """Fetch current 15-min window strike prices and expiry from both platforms."""
+    """Fetch current 15-min window strike prices, ask prices, and expiry."""
     global _ks_strike, _pm_strike, _window_end_ts
+    global _ks_yes_ask, _ks_no_ask, _pm_up_ask, _pm_down_ask
     try:
         from clients.btc_watcher import fetch_btc_snapshot
         snap = fetch_btc_snapshot()
@@ -406,6 +480,12 @@ def _fetch_strikes():
 
         _ks_strike = float(ks.get("floor_strike", 0) or 0)
         _pm_strike = float(pm.get("floor_strike", 0) or 0)
+
+        # Ask prices for Model D
+        _ks_yes_ask = float(ks.get("yes_ask", 0) or 0)
+        _ks_no_ask = float(ks.get("no_ask", 0) or 0)
+        _pm_up_ask = float(pm.get("up_ask", 0) or 0)
+        _pm_down_ask = float(pm.get("down_ask", 0) or 0)
 
         # Parse window end time
         close_time = ks.get("close_time", "") or pm.get("end_time", "")

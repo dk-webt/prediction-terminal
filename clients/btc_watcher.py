@@ -985,9 +985,27 @@ class BtcStreamManager:
         if self._deribit_poller and self._deribit_poller.sigma_15m:
             self._model_orch.set_sigma(self._deribit_poller.sigma_15m)
 
+    def _sync_orch_prices(self):
+        """Push latest ask prices to the model orchestrator for Model D."""
+        ks = self._kalshi_data or {}
+        pm = self._pm_data or {}
+        ks_yes_ask = float(ks.get("yes_ask", 0) or 0)
+        ks_no_ask = float(ks.get("no_ask", 0) or 0)
+        pm_up_ask = float(pm.get("up_ask", 0) or 0)
+        pm_down_ask = float(pm.get("down_ask", 0) or 0)
+        # PM fee from fee_schedule if available, default 200 bps
+        fee_schedule = pm.get("fee_schedule")
+        pm_fee_bps = 200.0
+        if isinstance(fee_schedule, (int, float)):
+            pm_fee_bps = float(fee_schedule)
+        self._model_orch.set_prices(
+            ks_yes_ask, ks_no_ask, pm_up_ask, pm_down_ask, pm_fee_bps,
+        )
+
     def get_model_state(self):
         """Compute and return current model state. Called by ATE."""
         self._sync_orch_sigma()
+        self._sync_orch_prices()
         return self._model_orch.compute()
 
     def _get_oracle_aligned_summary(self) -> dict | None:

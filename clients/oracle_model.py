@@ -524,6 +524,180 @@ def calibrate_copula(
     )
 
 
+# ── Model D: Execution Logic (Friction-Adjusted EV) ────────────────────────
+
+MODEL_D_MIN_ALPHA = 0.02    # minimum EV threshold ($) to trigger trade
+MODEL_D_MIN_TIME_S = 59     # reject if < 59s to expiry
+KALSHI_TAKER_FEE = 0.07     # Kalshi taker fee: 7c per contract on fill
+
+
+@dataclass
+class ModelDResult:
+    """Friction-adjusted expected value and trade recommendation."""
+    # Per-strategy EV
+    ev_a: float              # EV for Strategy A (KS YES + PM NO)
+    ev_b: float              # EV for Strategy B (KS NO + PM YES)
+    # Cost breakdown for chosen strategy
+    chosen: str | None       # "A", "B", or None (no trade)
+    ev: float                # EV of chosen strategy (or best if none chosen)
+    cost: float              # total premium (C_k + C_p)
+    fee_ks: float            # Kalshi fee
+    fee_pm: float            # Polymarket fee
+    # Gate checks
+    gates: dict              # {name: (passed: bool, reason: str)}
+    all_gates_passed: bool   # True only if ALL gates pass
+
+
+@dataclass
+class StrategyPrices:
+    """Ask prices for a specific strategy."""
+    ks_ask: float     # Kalshi leg ask price
+    pm_ask: float     # Polymarket leg ask price
+    ks_side: str      # "yes" or "no"
+    pm_side: str      # "up" or "down"
+
+
+def model_d_ev(
+    model_c: ModelCResult,
+    cost: float,
+    fee_ks: float,
+    fee_pm: float,
+) -> float:
+    """
+    Compute friction-adjusted expected value for one strategy.
+
+    EV = P(WW) × (2 - Cost - F_k - F_p)    # both legs win → $2 payout
+       + P(WL) × (1 - Cost - F_k - F_p)    # one leg wins → $1 payout
+       + P(LW) × (1 - Cost - F_k - F_p)    # other leg wins → $1 payout
+       - P(LL) × (Cost + F_k + F_p)         # both lose → lose premium + fees
+    """
+    total_friction = cost + fee_ks + fee_pm
+
+    ev = (model_c.p_ww * (2.0 - total_friction)
+          + model_c.p_wl * (1.0 - total_friction)
+          + model_c.p_lw * (1.0 - total_friction)
+          - model_c.p_ll * total_friction)
+
+    return ev
+
+
+def model_d_execute(
+    model_c_a: ModelCResult | None,
+    model_c_b: ModelCResult | None,
+    prices_a: StrategyPrices,
+    prices_b: StrategyPrices,
+    fee_pm_bps: float,
+    adf: 'ADFResult | None',
+    ou: 'OUParams | None',
+    tau: float | None,
+    min_alpha: float = MODEL_D_MIN_ALPHA,
+) -> ModelDResult:
+    """
+    Full Model D execution decision with gate checks.
+
+    Args:
+        model_c_a: Model C output for Strategy A
+        model_c_b: Model C output for Strategy B
+        prices_a: ask prices for Strategy A (KS YES + PM NO/DOWN)
+        prices_b: ask prices for Strategy B (KS NO + PM UP)
+        fee_pm_bps: Polymarket fee rate in basis points (e.g. 200 = 2%)
+        adf: ADF test result from Model B
+        ou: OU parameters from Model B
+        tau: time remaining as fraction of 15-min window (0-1)
+        min_alpha: minimum EV threshold to trigger (default $0.02)
+    """
+    gates = {}
+
+    # Gate 1: ADF stationarity
+    if adf is None:
+        gates["adf"] = (False, "no ADF result")
+    elif not adf.is_stationary:
+        gates["adf"] = (False, f"p={adf.pvalue:.4f} > 0.05")
+    else:
+        gates["adf"] = (True, f"p={adf.pvalue:.4f}")
+
+    # Gate 2: Half-life < time remaining
+    if ou is None or tau is None:
+        gates["half_life"] = (False, "no OU params or tau")
+    else:
+        time_remaining_s = tau * 15 * 60
+        if ou.half_life_s >= time_remaining_s and time_remaining_s > 0:
+            gates["half_life"] = (False, f"{ou.half_life_s:.1f}s >= {time_remaining_s:.0f}s remaining")
+        else:
+            gates["half_life"] = (True, f"{ou.half_life_s:.1f}s < {time_remaining_s:.0f}s remaining")
+
+    # Gate 3: Time remaining > 59s
+    if tau is None:
+        gates["time"] = (False, "no tau")
+    else:
+        time_remaining_s = tau * 15 * 60
+        if time_remaining_s < MODEL_D_MIN_TIME_S:
+            gates["time"] = (False, f"{time_remaining_s:.0f}s < {MODEL_D_MIN_TIME_S}s")
+        else:
+            gates["time"] = (True, f"{time_remaining_s:.0f}s remaining")
+
+    # Gate 4: Model C available
+    if model_c_a is None or model_c_b is None:
+        gates["model_c"] = (False, "no copula output")
+    else:
+        gates["model_c"] = (True, "ok")
+
+    # Compute fees
+    fee_ks = KALSHI_TAKER_FEE
+    fee_pm_rate = fee_pm_bps / 10000.0 if fee_pm_bps > 0 else 0.02  # default 2%
+
+    # Compute EV for both strategies
+    cost_a = prices_a.ks_ask + prices_a.pm_ask
+    cost_b = prices_b.ks_ask + prices_b.pm_ask
+    fee_pm_a = prices_a.pm_ask * fee_pm_rate
+    fee_pm_b = prices_b.pm_ask * fee_pm_rate
+
+    ev_a = -999.0
+    ev_b = -999.0
+    if model_c_a and cost_a > 0:
+        ev_a = model_d_ev(model_c_a, cost_a, fee_ks, fee_pm_a)
+    if model_c_b and cost_b > 0:
+        ev_b = model_d_ev(model_c_b, cost_b, fee_ks, fee_pm_b)
+
+    # Gate 5: EV threshold
+    best_ev = max(ev_a, ev_b)
+    if best_ev < min_alpha:
+        gates["ev"] = (False, f"${best_ev:.4f} < ${min_alpha:.2f}")
+    else:
+        gates["ev"] = (True, f"${best_ev:.4f} >= ${min_alpha:.2f}")
+
+    all_passed = all(passed for passed, _ in gates.values())
+
+    # Choose strategy
+    chosen = None
+    chosen_ev = best_ev
+    chosen_cost = 0.0
+    chosen_fee_pm = 0.0
+
+    if all_passed:
+        if ev_a >= ev_b:
+            chosen = "A"
+            chosen_cost = cost_a
+            chosen_fee_pm = fee_pm_a
+        else:
+            chosen = "B"
+            chosen_cost = cost_b
+            chosen_fee_pm = fee_pm_b
+        chosen_ev = ev_a if chosen == "A" else ev_b
+
+    return ModelDResult(
+        ev_a=round(ev_a, 6),
+        ev_b=round(ev_b, 6),
+        chosen=chosen,
+        ev=round(chosen_ev, 6),
+        cost=round(chosen_cost, 4),
+        fee_ks=round(fee_ks, 4),
+        fee_pm=round(chosen_fee_pm, 4),
+        gates=gates,
+        all_gates_passed=all_passed,
+    )
+
+
 # ── Model B: Oracle Divergence (Ornstein-Uhlenbeck) ────────────────────────
 
 ADF_PVALUE_THRESHOLD = 0.05  # reject null (random walk) if p < 0.05
@@ -763,6 +937,8 @@ class ModelState:
     model_c_a: ModelCResult | None   # Strategy A (KS YES + PM NO)
     model_c_b: ModelCResult | None   # Strategy B (KS NO + PM YES)
     copula: CopulaCalibration | None
+    # Model D — execution decision
+    model_d: ModelDResult | None
     # Inputs used
     sigma_15m: float | None
     tau: float | None                # time remaining (fraction of 15-min window)
@@ -801,6 +977,13 @@ class ModelOrchestrator:
         self._pm_strike: float = 0.0
         self._window_end_ts: float = 0.0
 
+        # Ask prices for Model D (updated by BtcStreamManager on each snapshot)
+        self._ks_yes_ask: float = 0.0
+        self._ks_no_ask: float = 0.0
+        self._pm_up_ask: float = 0.0
+        self._pm_down_ask: float = 0.0
+        self._pm_fee_bps: float = 200.0  # default 2%, updated from token metadata
+
         # Cached model outputs (recomputed on compute())
         self._last_state: ModelState | None = None
         self._last_compute_ts: float = 0.0
@@ -825,6 +1008,16 @@ class ModelOrchestrator:
     def set_sigma(self, sigma_15m: float | None):
         """Update the 15-min implied volatility from Deribit."""
         self._sigma_15m = sigma_15m
+
+    def set_prices(self, ks_yes_ask: float, ks_no_ask: float,
+                   pm_up_ask: float, pm_down_ask: float,
+                   pm_fee_bps: float = 200.0):
+        """Update live ask prices and PM fee rate for Model D."""
+        self._ks_yes_ask = ks_yes_ask
+        self._ks_no_ask = ks_no_ask
+        self._pm_up_ask = pm_up_ask
+        self._pm_down_ask = pm_down_ask
+        self._pm_fee_bps = pm_fee_bps
 
     def compute(self, now: float | None = None) -> ModelState:
         """
@@ -885,6 +1078,24 @@ class ModelOrchestrator:
                     copula.rho, copula.nu, strategy="B",
                 )
 
+        # Model D — execution decision
+        model_d_result = None
+        if model_c_a and model_c_b:
+            prices_a = StrategyPrices(
+                ks_ask=self._ks_yes_ask, pm_ask=self._pm_down_ask,
+                ks_side="yes", pm_side="down",
+            )
+            prices_b = StrategyPrices(
+                ks_ask=self._ks_no_ask, pm_ask=self._pm_up_ask,
+                ks_side="no", pm_side="up",
+            )
+            model_d_result = model_d_execute(
+                model_c_a=model_c_a, model_c_b=model_c_b,
+                prices_a=prices_a, prices_b=prices_b,
+                fee_pm_bps=self._pm_fee_bps,
+                adf=adf, ou=ou, tau=tau,
+            )
+
         state = ModelState(
             model_a_ks=model_a_ks,
             model_a_pm=model_a_pm,
@@ -893,6 +1104,7 @@ class ModelOrchestrator:
             model_c_a=model_c_a,
             model_c_b=model_c_b,
             copula=copula,
+            model_d=model_d_result,
             sigma_15m=self._sigma_15m,
             tau=tau,
             brti_price=brti,
