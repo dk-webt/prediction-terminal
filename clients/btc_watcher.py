@@ -1001,18 +1001,13 @@ class BtcStreamManager:
         ks_no_ask = float(ks.get("no_ask", 0) or 0)
         pm_up_ask = float(pm.get("up_ask", 0) or 0)
         pm_down_ask = float(pm.get("down_ask", 0) or 0)
-        # PM fee from fee_schedule: {rate, exponent, rebateRate, takerOnly}
+        # PM taker fee rate: 0.072 for crypto (from docs.polymarket.com/trading/fees)
         fee_schedule = pm.get("fee_schedule")
-        pm_fee_rate = 0.02  # default 2% if fee_schedule missing
-        pm_fee_exponent = 1
-        pm_fee_rebate = 0.0
+        pm_fee_rate = 0.072
         if isinstance(fee_schedule, dict):
-            pm_fee_rate = float(fee_schedule.get("rate", 0.02))
-            pm_fee_exponent = int(fee_schedule.get("exponent", 1))
-            pm_fee_rebate = float(fee_schedule.get("rebateRate", 0.0))
+            pm_fee_rate = float(fee_schedule.get("rate", 0.072))
         self._model_orch.set_prices(
-            ks_yes_ask, ks_no_ask, pm_up_ask, pm_down_ask,
-            pm_fee_rate, pm_fee_exponent, pm_fee_rebate,
+            ks_yes_ask, ks_no_ask, pm_up_ask, pm_down_ask, pm_fee_rate,
         )
 
     def get_model_state(self):
