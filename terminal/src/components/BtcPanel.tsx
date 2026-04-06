@@ -93,97 +93,119 @@ function OracleAlignmentDbg({ snapshot }: { snapshot: BtcSnapshot }) {
         </div>
       )}
 
-      {!ms ? (
-        <span className="btc-dim">Waiting for model compute (updates every 10s)...</span>
-      ) : (
-        <>
-          {/* Model B: ADF + OU */}
-          <div style={{ ...grid, marginBottom: 4 }}>
-            <span className="btc-dim">ADF:</span>
-            <span style={{ ...mono, color: ms.adf?.is_stationary ? '#00cc44' : '#ff4444' }}>
-              {ms.adf ? `${ms.adf.statistic.toFixed(3)} p=${ms.adf.pvalue.toFixed(4)} ${ms.adf.is_stationary ? 'STATIONARY' : 'NON-STATIONARY'}` : 'N/A'}
-            </span>
-            <span className="btc-dim">OU:</span>
-            <span style={mono}>
-              {ms.ou ? `\u03B8=${ms.ou.theta.toFixed(4)} \u03BC=$${ms.ou.mu.toFixed(2)} \u03C3=$${ms.ou.sigma.toFixed(2)} HL=${ms.ou.half_life_s.toFixed(1)}s` : 'N/A'}
-            </span>
+      {(() => {
+        const ticks = ms?.n_aligned_ticks ?? oa?.aligned_ticks ?? 0
+        const needAdf = 60
+        const needCopula = 300  // 30s × 10 minimum sub-sampled returns
+        const readyIn = (need: number) => {
+          const remaining = Math.max(0, need - ticks)
+          if (remaining <= 0) return null
+          const secs = remaining  // ~1 tick per second
+          return secs > 60 ? `~${Math.ceil(secs / 60)}min` : `~${secs}s`
+        }
+        const pending = (label: string, need: number) => {
+          const eta = readyIn(need)
+          return <span style={{ color: '#666' }}>ready in {eta} ({ticks}/{need} ticks)</span>
+        }
+
+        return <>
+          {/* Model A: probabilities */}
+          <div style={{ ...grid, marginBottom: 4, borderBottom: '1px solid #333', paddingBottom: 4 }}>
+            <span className="btc-dim" style={{ gridColumn: '1 / -1', color: '#ff9900', fontSize: 10, letterSpacing: 1 }}>MODEL A — LEG PRICING</span>
+            <span className="btc-dim">KS P(above ${ms?.ks_strike?.toLocaleString() ?? '?'}):</span>
+            <span style={mono}>{ms?.model_a_ks ? `${(ms.model_a_ks.p_above * 100).toFixed(1)}% (d2=${ms.model_a_ks.d2.toFixed(3)})` : <span style={{ color: '#666' }}>{ms?.sigma_15m ? 'waiting...' : 'need Deribit IV'}</span>}</span>
+            <span className="btc-dim">PM P(above ${ms?.pm_strike?.toLocaleString() ?? '?'}):</span>
+            <span style={mono}>{ms?.model_a_pm ? `${(ms.model_a_pm.p_above * 100).toFixed(1)}% (d2=${ms.model_a_pm.d2.toFixed(3)})` : <span style={{ color: '#666' }}>{ms?.sigma_15m ? 'waiting...' : 'need Deribit IV'}</span>}</span>
+            <span className="btc-dim">{'\u03C3'}_15m:</span>
+            <span style={mono}>{ms?.sigma_15m ? ms.sigma_15m.toFixed(6) : <span style={{ color: '#666' }}>polling Deribit...</span>}</span>
           </div>
 
-          {/* Model A: probabilities */}
-          {ms.sigma_15m && (
-            <div style={{ ...grid, marginBottom: 4 }}>
-              <span className="btc-dim">KS P(above ${ms.ks_strike?.toLocaleString()}):</span>
-              <span style={mono}>{ms.model_a_ks ? `${(ms.model_a_ks.p_above * 100).toFixed(1)}%` : 'N/A'}</span>
-              <span className="btc-dim">PM P(above ${ms.pm_strike?.toLocaleString()}):</span>
-              <span style={mono}>{ms.model_a_pm ? `${(ms.model_a_pm.p_above * 100).toFixed(1)}%` : 'N/A'}</span>
-              <span className="btc-dim">{'\u03C3'}_15m:</span>
-              <span style={mono}>{ms.sigma_15m.toFixed(6)}</span>
-            </div>
-          )}
+          {/* Model B: ADF + OU */}
+          <div style={{ ...grid, marginBottom: 4, borderBottom: '1px solid #333', paddingBottom: 4 }}>
+            <span className="btc-dim" style={{ gridColumn: '1 / -1', color: '#ff9900', fontSize: 10, letterSpacing: 1 }}>MODEL B — ORACLE DIVERGENCE (OU)</span>
+            <span className="btc-dim">ADF:</span>
+            {ms?.adf ? (
+              <span style={{ ...mono, color: ms.adf.is_stationary ? '#00cc44' : '#ff4444' }}>
+                {ms.adf.statistic.toFixed(3)} p={ms.adf.pvalue.toFixed(4)} {ms.adf.is_stationary ? 'STATIONARY' : 'NON-STATIONARY'} ({ms.adf.n_obs} obs)
+              </span>
+            ) : <span style={mono}>{pending('ADF', needAdf)}</span>}
+            <span className="btc-dim">OU {'\u03B8'} (reversion):</span>
+            {ms?.ou ? <span style={mono}>{ms.ou.theta.toFixed(4)}/s</span> : <span style={mono}>{pending('OU', needAdf)}</span>}
+            <span className="btc-dim">OU {'\u03BC'} (equilibrium):</span>
+            {ms?.ou ? <span style={mono}>${ms.ou.mu.toFixed(2)}</span> : <span style={mono}>—</span>}
+            <span className="btc-dim">OU {'\u03C3'} (volatility):</span>
+            {ms?.ou ? <span style={mono}>${ms.ou.sigma.toFixed(2)}/{'$\\sqrt{s}$'}</span> : <span style={mono}>—</span>}
+            <span className="btc-dim">Half-life:</span>
+            {ms?.ou ? <span style={{ ...mono, color: ms.ou.half_life_s < 300 ? '#00cc44' : ms.ou.half_life_s < 600 ? '#ffaa00' : '#ff4444' }}>{ms.ou.half_life_s.toFixed(1)}s ({(ms.ou.half_life_s / 60).toFixed(1)} min)</span> : <span style={mono}>—</span>}
+          </div>
 
           {/* Model C: copula + joint probs */}
-          {ms.copula && (
-            <div style={{ ...grid, marginBottom: 4 }}>
-              <span className="btc-dim">Copula:</span>
+          <div style={{ ...grid, marginBottom: 4, borderBottom: '1px solid #333', paddingBottom: 4 }}>
+            <span className="btc-dim" style={{ gridColumn: '1 / -1', color: '#ff9900', fontSize: 10, letterSpacing: 1 }}>MODEL C — JOINT PROBABILITY (t-COPULA)</span>
+            <span className="btc-dim">Copula:</span>
+            {ms?.copula ? (
               <span style={mono}>
                 <span style={{ color: pctColor(1 - ms.copula.rho, 0.2, 0.5) }}>{'\u03C1'}={ms.copula.rho.toFixed(3)}</span>
-                {' '}{'\u03BD'}={ms.copula.nu.toFixed(1)} {'\u03C4'}={ms.copula.kendall_tau.toFixed(3)}
+                {' '}{'\u03BD'}={ms.copula.nu.toFixed(1)} {'\u03C4'}={ms.copula.kendall_tau.toFixed(3)} ({ms.copula.n_obs} ret @30s)
               </span>
-            </div>
-          )}
-          {ms.model_c_a && ms.model_c_b && (
-            <div style={{ ...grid, marginBottom: 4 }}>
-              <span className="btc-dim">Strat A (KS YES+PM NO):</span>
+            ) : <span style={mono}>{pending('Copula', needCopula)}</span>}
+            <span className="btc-dim">Strat A (KS YES+PM NO):</span>
+            {ms?.model_c_a ? (
               <span style={mono}>
                 WW={ms.model_c_a.p_ww.toFixed(3)} WL={ms.model_c_a.p_wl.toFixed(3)} LW={ms.model_c_a.p_lw.toFixed(3)}{' '}
                 <span style={{ color: pctColor(ms.model_c_a.p_ll, 0.05, 0.15) }}>LL={ms.model_c_a.p_ll.toFixed(3)}</span>
               </span>
-              <span className="btc-dim">Strat B (KS NO+PM YES):</span>
+            ) : <span style={mono}>—</span>}
+            <span className="btc-dim">Strat B (KS NO+PM YES):</span>
+            {ms?.model_c_b ? (
               <span style={mono}>
                 WW={ms.model_c_b.p_ww.toFixed(3)} WL={ms.model_c_b.p_wl.toFixed(3)} LW={ms.model_c_b.p_lw.toFixed(3)}{' '}
                 <span style={{ color: pctColor(ms.model_c_b.p_ll, 0.05, 0.15) }}>LL={ms.model_c_b.p_ll.toFixed(3)}</span>
               </span>
-            </div>
-          )}
+            ) : <span style={mono}>—</span>}
+          </div>
 
           {/* Model D: EV + trade signal */}
-          {ms.model_d && (
-            <div style={{ marginTop: 4, padding: '4px 0', borderTop: '1px solid #ff660033' }}>
-              <div style={{ ...grid }}>
-                <span className="btc-dim">EV Strat A:</span>
-                <span style={{ ...mono, color: ms.model_d.ev_a > 0.02 ? '#00cc44' : ms.model_d.ev_a > 0 ? '#ffaa00' : '#ff4444' }}>
-                  ${ms.model_d.ev_a > -100 ? ms.model_d.ev_a.toFixed(4) : 'N/A'}
-                </span>
-                <span className="btc-dim">EV Strat B:</span>
-                <span style={{ ...mono, color: ms.model_d.ev_b > 0.02 ? '#00cc44' : ms.model_d.ev_b > 0 ? '#ffaa00' : '#ff4444' }}>
-                  ${ms.model_d.ev_b > -100 ? ms.model_d.ev_b.toFixed(4) : 'N/A'}
-                </span>
-                <span className="btc-dim">Fees (KS taker / PM):</span>
-                <span style={mono}>${ms.model_d.fee_ks.toFixed(4)} / ${ms.model_d.fee_pm.toFixed(4)}</span>
-                <span className="btc-dim">Cost (premium):</span>
-                <span style={mono}>{ms.model_d.cost > 0 ? `$${ms.model_d.cost.toFixed(4)}` : 'N/A'}</span>
-              </div>
-              <div style={{ display: 'flex', gap: 8, fontSize: 11, marginTop: 4 }}>
-                <span className="btc-dim">Gates:</span>
-                {Object.entries(ms.model_d.gates).map(([name, g]) => (
-                  <span key={name} style={{ ...mono, color: gateColor(g.passed) }} title={g.reason}>
-                    {name}:{gateIcon(g.passed)}
+          <div style={{ marginTop: 2 }}>
+            <span className="btc-dim" style={{ display: 'block', color: '#ff9900', fontSize: 10, letterSpacing: 1, marginBottom: 2 }}>MODEL D — EXECUTION (FRICTION-ADJUSTED EV)</span>
+            {ms?.model_d ? (
+              <>
+                <div style={{ ...grid }}>
+                  <span className="btc-dim">EV Strat A:</span>
+                  <span style={{ ...mono, color: ms.model_d.ev_a > 0.02 ? '#00cc44' : ms.model_d.ev_a > 0 ? '#ffaa00' : '#ff4444' }}>
+                    ${ms.model_d.ev_a > -100 ? ms.model_d.ev_a.toFixed(4) : 'N/A'}
                   </span>
-                ))}
-              </div>
-              <div style={{ marginTop: 4, fontSize: 12, fontWeight: 'bold' }}>
-                {ms.model_d.all_gates_passed && ms.model_d.chosen ? (
-                  <span style={{ color: '#00ff44' }}>
-                    TRADE {ms.model_d.chosen} — EV=${ms.model_d.ev.toFixed(4)}
+                  <span className="btc-dim">EV Strat B:</span>
+                  <span style={{ ...mono, color: ms.model_d.ev_b > 0.02 ? '#00cc44' : ms.model_d.ev_b > 0 ? '#ffaa00' : '#ff4444' }}>
+                    ${ms.model_d.ev_b > -100 ? ms.model_d.ev_b.toFixed(4) : 'N/A'}
                   </span>
-                ) : (
-                  <span style={{ color: '#ff4444' }}>NO TRADE</span>
-                )}
-              </div>
-            </div>
-          )}
+                  <span className="btc-dim">Fees (KS / PM):</span>
+                  <span style={mono}>${ms.model_d.fee_ks.toFixed(4)} / ${ms.model_d.fee_pm.toFixed(4)}</span>
+                  <span className="btc-dim">Cost (premium):</span>
+                  <span style={mono}>{ms.model_d.cost > 0 ? `$${ms.model_d.cost.toFixed(4)}` : 'N/A'}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, fontSize: 11, marginTop: 4 }}>
+                  <span className="btc-dim">Gates:</span>
+                  {Object.entries(ms.model_d.gates).map(([name, g]) => (
+                    <span key={name} style={{ ...mono, color: gateColor(g.passed) }} title={g.reason}>
+                      {name}:{gateIcon(g.passed)}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 12, fontWeight: 'bold' }}>
+                  {ms.model_d.all_gates_passed && ms.model_d.chosen ? (
+                    <span style={{ color: '#00ff44' }}>TRADE {ms.model_d.chosen} — EV=${ms.model_d.ev.toFixed(4)}</span>
+                  ) : (
+                    <span style={{ color: '#ff4444' }}>NO TRADE</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <span style={mono}>{pending('Model D', needCopula)}</span>
+            )}
+          </div>
         </>
-      )}
+      })()}
     </div>
   )
 }
