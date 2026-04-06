@@ -692,8 +692,16 @@ export default function BtcPanel() {
                 </span>
               </div>
               <div className="btc-field">
+                <span className="btc-label">Chainlink Live</span>
+                <span className="btc-value" style={{ color: btcSnapshot.btc_chainlink != null && pm.floor_strike != null
+                  ? (btcSnapshot.btc_chainlink >= pm.floor_strike ? '#00cc44' : '#ff4444')
+                  : 'var(--amber)' }}>
+                  {btcSnapshot.btc_chainlink != null ? `$${btcSnapshot.btc_chainlink.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '---'}
+                </span>
+              </div>
+              <div className="btc-field">
                 <span className="btc-label">Source</span>
-                <span className="btc-value btc-dim">Chainlink BTC/USD data stream</span>
+                <span className="btc-value btc-dim">Chainlink BTC/USD via PM RTDS</span>
               </div>
               <div className="btc-divider" />
               <table className="btc-price-table">
