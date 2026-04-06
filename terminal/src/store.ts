@@ -38,6 +38,7 @@ interface TerminalState {
   btcSnapshot: BtcSnapshot | null
   btcAutoRefresh: boolean
   btcTimeSeries: { points: BtcTimeSeriesPoint[]; windowId: string }
+  btcOracleSeries: BtcTimeSeriesPoint[]  // continuous oracle data (no roll reset)
   fundKs: number       // available cash on Kalshi
   fundPm: number       // available cash on Polymarket
   fundPct: number      // percentage of funds to use (0-1)
@@ -86,6 +87,7 @@ interface TerminalState {
   setBtcSnapshot: (v: BtcSnapshot | null) => void
   setBtcAutoRefresh: (v: boolean) => void
   appendBtcTick: (point: BtcTimeSeriesPoint) => void
+  appendOracleTick: (point: BtcTimeSeriesPoint) => void
   resetBtcTimeSeries: (windowId: string) => void
   setFundKs: (v: number) => void
   setFundPm: (v: number) => void
@@ -135,6 +137,7 @@ export const useStore = create<TerminalState>((set) => ({
   btcSnapshot: null,
   btcAutoRefresh: false,
   btcTimeSeries: { points: [], windowId: '' },
+  btcOracleSeries: [],
   fundKs: 0,
   fundPm: 0,
   fundPct: 1.0,
@@ -179,6 +182,11 @@ export const useStore = create<TerminalState>((set) => ({
     const pts = state.btcTimeSeries.points
     const next = pts.length >= 2000 ? [...pts.slice(-1999), point] : [...pts, point]
     return { btcTimeSeries: { ...state.btcTimeSeries, points: next } }
+  }),
+  appendOracleTick: (point) => set((state) => {
+    const pts = state.btcOracleSeries
+    const next = pts.length >= 2000 ? [...pts.slice(-1999), point] : [...pts, point]
+    return { btcOracleSeries: next }
   }),
   resetBtcTimeSeries: (windowId) => set((state) => ({
     btcTimeSeries: { points: [], windowId },

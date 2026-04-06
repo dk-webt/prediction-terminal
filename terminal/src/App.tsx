@@ -147,8 +147,12 @@ export default function App() {
         let time = Math.floor(Date.now() / 1000)
         if (time <= lastTime) time = lastTime + 1
 
-        if (priceGap !== null || comboA !== null || comboB !== null || coinbase !== null || chainlink !== null) {
+        // Combo data resets on roll; oracle data is continuous
+        if (comboA !== null || comboB !== null) {
           state.appendBtcTick({ time, priceGap, comboA, comboB, coinbase, chainlink })
+        }
+        if (priceGap !== null || coinbase !== null || chainlink !== null) {
+          state.appendOracleTick({ time, priceGap, comboA, comboB, coinbase, chainlink })
         }
       } else if (msg.type === 'btc_stopped') {
         useStore.getState().setBtcAutoRefresh(false)

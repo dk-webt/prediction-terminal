@@ -1174,7 +1174,13 @@ class ModelOrchestrator:
         model_c_a = None
         model_c_b = None
         copula = None
-        if model_a_ks and model_a_pm and len(self._brti_prices) >= 30:
+        n_prices = len(self._brti_prices)
+        if not model_a_ks or not model_a_pm:
+            log.debug("Model C skipped: model_a_ks=%s model_a_pm=%s oracle_stale=%s sigma_stale=%s tau=%s pm_strike=%s",
+                       model_a_ks is not None, model_a_pm is not None, oracle_stale, sigma_stale, tau, self._pm_strike)
+        elif n_prices < 30:
+            log.debug("Model C skipped: only %d prices (need 30)", n_prices)
+        if model_a_ks and model_a_pm and n_prices >= 30:
             copula = calibrate_copula(
                 np.array(self._brti_prices),
                 np.array(self._cl_prices),

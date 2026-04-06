@@ -1825,6 +1825,7 @@ class BtcStreamManager:
                 if strike is not None:
                     self._pm_data["floor_strike"] = strike
                     log.info("PM strike price available: $%.2f (attempt %d)", strike, attempt)
+                    self._sync_orch_strikes()  # update orchestrator with new PM strike
                     await self._push_update(force=True)
                     return
             except Exception as e:

@@ -330,14 +330,13 @@ function BtcPriceGapChart() {
     return () => { ro.disconnect(); chart.remove() }
   }, [])
 
-  // Subscribe to store for incremental updates
+  // Subscribe to continuous oracle series (no roll reset)
   useEffect(() => {
     let lastLen = 0
     const unsub = useStore.subscribe((state) => {
-      const pts = state.btcTimeSeries.points
+      const pts = state.btcOracleSeries
       if (!seriesRef.current) return
       if (pts.length < lastLen) {
-        // Window reset — re-set all data
         seriesRef.current.setData(
           pts.filter(p => p.priceGap != null).map(p => ({
             time: p.time as UTCTimestamp,
@@ -495,10 +494,11 @@ function BtcSpotChart({ field, title, color }: { field: 'coinbase' | 'chainlink'
     return () => { ro.disconnect(); chart.remove() }
   }, [color])
 
+  // Subscribe to continuous oracle series (no roll reset)
   useEffect(() => {
     let lastLen = 0
     const unsub = useStore.subscribe((state) => {
-      const pts = state.btcTimeSeries.points
+      const pts = state.btcOracleSeries
       if (!seriesRef.current) return
       if (pts.length < lastLen) {
         seriesRef.current.setData(
@@ -740,8 +740,8 @@ export default function BtcPanel() {
 
       {/* Time Series Charts */}
       <div className="btc-charts-section">
-        <BtcPriceGapChart />
         <BtcArbitrageChart />
+        <BtcPriceGapChart />
         <BtcSpotChart field="coinbase" title={`KALSHI SOURCE: BRTI ESTIMATE (${btcSnapshot.brti_active_exchanges ?? '?'} of 6)`} color="#ffcc44" />
         <BtcSpotChart field="chainlink" title="PM SOURCE: CHAINLINK BTC/USD" color="#00cc44" />
       </div>
