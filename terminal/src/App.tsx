@@ -141,18 +141,26 @@ export default function App() {
         const comboA = (yesAsk !== null && downAsk !== null) ? yesAsk + downAsk : null
         const comboB = (noAsk !== null && upAsk !== null) ? noAsk + upAsk : null
 
-        // Ensure monotonic timestamps for lightweight-charts
-        const pts = useStore.getState().btcTimeSeries.points
-        const lastTime = pts.length > 0 ? pts[pts.length - 1].time : 0
-        let time = Math.floor(Date.now() / 1000)
-        if (time <= lastTime) time = lastTime + 1
+        // Combo charts: local timestamp, resets on roll
+        const comboPts = useStore.getState().btcTimeSeries.points
+        const lastComboTime = comboPts.length > 0 ? comboPts[comboPts.length - 1].time : 0
+        let comboTime = Math.floor(Date.now() / 1000)
+        if (comboTime <= lastComboTime) comboTime = lastComboTime + 1
 
-        // Combo data resets on roll; oracle data is continuous
         if (comboA !== null || comboB !== null) {
-          state.appendBtcTick({ time, priceGap, comboA, comboB, coinbase, chainlink })
+          state.appendBtcTick({ time: comboTime, priceGap, comboA, comboB, coinbase, chainlink })
         }
-        if (priceGap !== null || coinbase !== null || chainlink !== null) {
-          state.appendOracleTick({ time, priceGap, comboA, comboB, coinbase, chainlink })
+
+        // Oracle charts: server-aligned bin_ts, no forward fill (gaps are gaps)
+        const oracleAligned = snap.oracle_aligned as Record<string, unknown> | null
+        const binTs = typeof oracleAligned?.bin_ts === 'number' ? oracleAligned.bin_ts : null
+        if (binTs !== null && (priceGap !== null || coinbase !== null || chainlink !== null)) {
+          const oraclePts = useStore.getState().btcOracleSeries
+          const lastOracleTime = oraclePts.length > 0 ? oraclePts[oraclePts.length - 1].time : 0
+          // Only append if this is a new bin (no duplicates, no forward fill)
+          if (binTs > lastOracleTime) {
+            state.appendOracleTick({ time: binTs, priceGap, comboA, comboB, coinbase, chainlink })
+          }
         }
       } else if (msg.type === 'btc_stopped') {
         useStore.getState().setBtcAutoRefresh(false)

@@ -1,8 +1,37 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createChart, CrosshairMode, LineStyle, LineSeries } from 'lightweight-charts'
-import type { IChartApi, ISeriesApi, UTCTimestamp } from 'lightweight-charts'
+import type { IChartApi, ISeriesApi, UTCTimestamp, LogicalRange } from 'lightweight-charts'
 import { useStore } from '../store'
 import type { BtcSnapshot } from '../types'
+
+/** Shared sync group for oracle charts — when one pans/zooms, others follow. */
+type ChartSyncGroup = {
+  charts: Set<IChartApi>
+  syncing: boolean  // guard against infinite sync loops
+}
+
+function useChartSyncGroup(): React.MutableRefObject<ChartSyncGroup> {
+  return useRef<ChartSyncGroup>({ charts: new Set(), syncing: false })
+}
+
+function registerChartSync(group: ChartSyncGroup, chart: IChartApi) {
+  group.charts.add(chart)
+  const ts = chart.timeScale()
+  ts.subscribeVisibleLogicalRangeChange((range: LogicalRange | null) => {
+    if (group.syncing || !range) return
+    group.syncing = true
+    for (const other of group.charts) {
+      if (other !== chart) {
+        other.timeScale().setVisibleLogicalRange(range)
+      }
+    }
+    group.syncing = false
+  })
+}
+
+function unregisterChartSync(group: ChartSyncGroup, chart: IChartApi) {
+  group.charts.delete(chart)
+}
 
 const STALE_THRESHOLD_MS = 10_000  // 10 seconds
 
@@ -58,6 +87,17 @@ function PlatformStatusDot({ lastUpdate }: { lastUpdate: string | undefined }) {
   const { label, color } = usePlatformStatus(lastUpdate)
   return (
     <span style={{ color, fontSize: 9, marginLeft: 'auto', fontWeight: 'normal' }}>{label}</span>
+  )
+}
+
+function OracleSyncedCharts({ brti_exchanges }: { brti_exchanges?: number | null }) {
+  const syncGroup = useChartSyncGroup()
+  return (
+    <>
+      <BtcPriceGapChart syncGroup={syncGroup.current} />
+      <BtcSpotChart field="coinbase" title={`KALSHI SOURCE: BRTI ESTIMATE (${brti_exchanges ?? '?'} of 6)`} color="#ffcc44" syncGroup={syncGroup.current} />
+      <BtcSpotChart field="chainlink" title="PM SOURCE: CHAINLINK BTC/USD" color="#00cc44" syncGroup={syncGroup.current} />
+    </>
   )
 }
 
@@ -291,7 +331,7 @@ const CHART_OPTIONS = {
   rightPriceScale: { borderColor: '#2a1a00' },
 } as const
 
-function BtcPriceGapChart() {
+function BtcPriceGapChart({ syncGroup }: { syncGroup?: ChartSyncGroup }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Line'> | null>(null)
@@ -321,6 +361,7 @@ function BtcPriceGapChart() {
 
     chartRef.current = chart
     seriesRef.current = series
+    if (syncGroup) registerChartSync(syncGroup, chart)
 
     const ro = new ResizeObserver(entries => {
       const { width } = entries[0].contentRect
@@ -328,7 +369,11 @@ function BtcPriceGapChart() {
     })
     ro.observe(containerRef.current)
 
-    return () => { ro.disconnect(); chart.remove() }
+    return () => {
+      if (syncGroup) unregisterChartSync(syncGroup, chart)
+      ro.disconnect()
+      chart.remove()
+    }
   }, [])
 
   // Subscribe to continuous oracle series (no roll reset)
@@ -468,7 +513,7 @@ function BtcArbitrageChart() {
   )
 }
 
-function BtcSpotChart({ field, title, color }: { field: 'coinbase' | 'chainlink'; title: string; color: string }) {
+function BtcSpotChart({ field, title, color, syncGroup }: { field: 'coinbase' | 'chainlink'; title: string; color: string; syncGroup?: ChartSyncGroup }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const seriesRef = useRef<ISeriesApi<'Line'> | null>(null)
 
@@ -485,6 +530,7 @@ function BtcSpotChart({ field, title, color }: { field: 'coinbase' | 'chainlink'
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
     })
     seriesRef.current = series
+    if (syncGroup) registerChartSync(syncGroup, chart)
 
     const ro = new ResizeObserver(entries => {
       const { width } = entries[0].contentRect
@@ -492,7 +538,11 @@ function BtcSpotChart({ field, title, color }: { field: 'coinbase' | 'chainlink'
     })
     ro.observe(containerRef.current)
 
-    return () => { ro.disconnect(); chart.remove() }
+    return () => {
+      if (syncGroup) unregisterChartSync(syncGroup, chart)
+      ro.disconnect()
+      chart.remove()
+    }
   }, [color])
 
   // Subscribe to continuous oracle series (no roll reset)
@@ -750,9 +800,7 @@ export default function BtcPanel() {
       {/* Time Series Charts */}
       <div className="btc-charts-section">
         <BtcArbitrageChart />
-        <BtcPriceGapChart />
-        <BtcSpotChart field="coinbase" title={`KALSHI SOURCE: BRTI ESTIMATE (${btcSnapshot.brti_active_exchanges ?? '?'} of 6)`} color="#ffcc44" />
-        <BtcSpotChart field="chainlink" title="PM SOURCE: CHAINLINK BTC/USD" color="#00cc44" />
+        <OracleSyncedCharts brti_exchanges={btcSnapshot.brti_active_exchanges} />
       </div>
 
       <OracleAlignmentDbg snapshot={btcSnapshot} />
