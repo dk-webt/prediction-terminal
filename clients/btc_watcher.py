@@ -743,8 +743,6 @@ class BtcStreamManager:
         self._deribit_poller = DeribitPoller(interval_s=300)
         await self._deribit_poller.start()
 
-        # Periodic model compute (every 10s) for frontend debug overlay
-        self._tasks.append(asyncio.create_task(self._model_compute_loop()))
         # Health heartbeat (every 30s)
         self._tasks.append(asyncio.create_task(self._heartbeat_loop()))
 
@@ -1017,8 +1015,9 @@ class BtcStreamManager:
         self._sync_orch_prices()
         return self._model_orch.compute()
 
-    MODEL_COMPUTE_INTERVAL = 1.0  # seconds between model recomputes
     HEARTBEAT_INTERVAL = 30.0     # seconds between health heartbeat logs
+    _model_compute_running = False  # guard against concurrent computes
+    _model_log_counter = 0
 
     async def _heartbeat_loop(self):
         """Periodic health heartbeat showing all stream states."""
@@ -1044,53 +1043,47 @@ class BtcStreamManager:
             except Exception:
                 log.exception("Heartbeat error")
 
-    async def _model_compute_loop(self):
-        """Periodically recompute models and cache serialized state for frontend."""
-        log.info("Model compute loop started (interval=%.0fs)", self.MODEL_COMPUTE_INTERVAL)
-        while self._running:
-            try:
-                await asyncio.sleep(self.MODEL_COMPUTE_INTERVAL)
-                # Run compute off the event loop to avoid blocking WS processing
-                self._sync_orch_sigma()
-                self._sync_orch_prices()
-                state = await asyncio.to_thread(self._model_orch.compute)
-                self._cached_model_dict = state.to_dict()
-                # Log model state summary at INFO on first compute, then DEBUG
-                n = state.n_aligned_ticks
-                has_adf = state.adf is not None
-                has_copula = state.copula is not None
-                has_d = state.model_d is not None
-                chosen = state.model_d.chosen if state.model_d else None
-                stale = "STALE" if state.oracle_stale else "ok"
+    async def _async_model_compute(self):
+        """Run all model compute in background thread, triggered by each _push_update."""
+        if self._model_compute_running:
+            return  # skip if previous compute still in flight
+        self._model_compute_running = True
+        try:
+            result = await asyncio.to_thread(self._compute_model_state_sync)
+            if result is not None:
+                self._cached_model_dict = result
+            # Log every 30th compute for monitoring
+            self._model_log_counter += 1
+            if self._model_log_counter % 30 == 1 and result:
+                ms = result
+                n = ms.get("n_aligned_ticks", 0)
+                adf = ms.get("adf")
+                cop = ms.get("copula")
+                md = ms.get("model_d")
+                stale = ms.get("staleness", {})
                 log.info(
-                    "MODEL: ticks=%d adf=%s copula=%s model_d=%s chosen=%s oracle=%s sigma=%s prices=%s",
+                    "MODEL: ticks=%d adf=%s copula=%s model_d=%s oracle=%s",
                     n,
-                    f"p={state.adf.pvalue:.4f}" if has_adf else "wait",
-                    f"rho={state.copula.rho:.3f}" if has_copula else "wait",
-                    f"ev={state.model_d.ev:.4f}" if has_d else "wait",
-                    chosen or "none",
-                    stale,
-                    f"{state.sigma_age_s:.0f}s" if state.sigma_age_s else "none",
-                    f"{state.prices_age_s:.0f}s" if state.prices_age_s else "none",
+                    f"p={adf['pvalue']:.4f}" if adf else "wait",
+                    f"rho={cop['rho']:.3f}" if cop else "wait",
+                    f"ev={md['ev']:.4f} chosen={md['chosen']}" if md else "wait",
+                    "STALE" if stale.get("oracle_stale") else "ok",
                 )
-            except asyncio.CancelledError:
-                break
-            except Exception:
-                log.exception("Model compute loop error")
+        except Exception:
+            log.exception("Model compute error")
+        finally:
+            self._model_compute_running = False
 
-    def _get_model_state_with_live_a(self) -> dict | None:
-        """Merge real-time Model A into the cached model state dict."""
-        base = self._cached_model_dict
-        live_a = self._model_orch.compute_model_a_fast()
-        if not base and not live_a:
-            return None
-        if not base:
-            return live_a
-        if not live_a:
-            return base
-        # Shallow merge: live Model A overwrites cached
-        merged = {**base, **live_a}
-        return merged
+    def _compute_model_state_sync(self) -> dict | None:
+        """Compute all models and return serialized dict. Called from _push_update."""
+        self._sync_orch_sigma()
+        self._sync_orch_prices()
+        try:
+            state = self._model_orch.compute()
+            return state.to_dict()
+        except Exception:
+            log.exception("Model compute error")
+            return self._cached_model_dict
 
     def _get_oracle_aligned_summary(self) -> dict | None:
         """Summary of oracle alignment buffer for snapshot."""
@@ -1232,14 +1225,19 @@ class BtcStreamManager:
             "oracle_aligned": self._get_oracle_aligned_summary(),
             # Deribit IV for Model A
             "deribit": self._deribit_poller.get_status() if self._deribit_poller else None,
-            # Model state: heavy models cached (10s), Model A computed inline (real-time)
-            "model_state": self._get_model_state_with_live_a(),
+            # Model state: all models computed inline (A/B/C/D)
+            "model_state": self._cached_model_dict,
         }
         t_build = time.monotonic()
         try:
             await self._on_update(snapshot)
         except Exception as e:
             log.warning("BTC stream callback error: %s", e)
+
+        # Compute all models off event loop, cache for next push
+        # (result lands in self._cached_model_dict for the NEXT snapshot)
+        asyncio.ensure_future(self._async_model_compute())
+
         t_send = time.monotonic()
 
         self._push_count += 1
