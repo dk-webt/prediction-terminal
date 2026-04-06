@@ -645,6 +645,7 @@ class BtcStreamManager:
                 tick.bin_ts, tick.brti_price, tick.chainlink_price, tick.spread,
             )
         self._oracle_buf = OracleAlignmentBuffer(max_ticks=900, on_tick=_on_aligned_tick)
+        self._cached_model_dict: dict | None = None  # serialized ModelState for frontend
 
         # Signals WS loops to reconnect with new tokens/tickers
         self._pm_user_reconnect = asyncio.Event()  # separate for user channel
@@ -738,6 +739,9 @@ class BtcStreamManager:
         from clients.deribit import DeribitPoller
         self._deribit_poller = DeribitPoller(interval_s=300)
         await self._deribit_poller.start()
+
+        # Periodic model compute (every 10s) for frontend debug overlay
+        self._tasks.append(asyncio.create_task(self._model_compute_loop()))
 
         # Start PM user channel for fill/order tracking if creds configured
         from config import POLYMARKET_API_KEY, POLYMARKET_API_SECRET, POLYMARKET_API_PASSPHRASE
@@ -1008,6 +1012,20 @@ class BtcStreamManager:
         self._sync_orch_prices()
         return self._model_orch.compute()
 
+    MODEL_COMPUTE_INTERVAL = 10.0  # seconds between model recomputes
+
+    async def _model_compute_loop(self):
+        """Periodically recompute models and cache serialized state for frontend."""
+        while self._running:
+            try:
+                await asyncio.sleep(self.MODEL_COMPUTE_INTERVAL)
+                state = self.get_model_state()
+                self._cached_model_dict = state.to_dict()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                log.warning("Model compute error: %s", e)
+
     def _get_oracle_aligned_summary(self) -> dict | None:
         """Summary of oracle alignment buffer for snapshot."""
         latest = self._oracle_buf.get_latest()
@@ -1144,8 +1162,8 @@ class BtcStreamManager:
             "oracle_aligned": self._get_oracle_aligned_summary(),
             # Deribit IV for Model A
             "deribit": self._deribit_poller.get_status() if self._deribit_poller else None,
-            # Model state (computed on demand for ATE — not recomputed here for perf)
-            "model_state_available": self._model_orch.last_state is not None,
+            # Model state (recomputed every 10s, serialized for frontend)
+            "model_state": self._cached_model_dict,
         }
         try:
             await self._on_update(snapshot)

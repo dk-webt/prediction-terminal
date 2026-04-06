@@ -948,6 +948,46 @@ class ModelState:
     pm_strike: float | None
     n_aligned_ticks: int
 
+    def to_dict(self) -> dict:
+        """Serialize to JSON-safe dict for frontend consumption."""
+        d: dict = {
+            "n_aligned_ticks": self.n_aligned_ticks,
+            "sigma_15m": self.sigma_15m,
+            "tau": round(self.tau, 4) if self.tau is not None else None,
+            "tau_min": round(self.tau * 15, 1) if self.tau is not None else None,
+            "brti_price": self.brti_price,
+            "chainlink_price": self.chainlink_price,
+            "ks_strike": self.ks_strike,
+            "pm_strike": self.pm_strike,
+        }
+        # Model A
+        if self.model_a_ks:
+            d["model_a_ks"] = {"p_above": self.model_a_ks.p_above, "p_below": self.model_a_ks.p_below, "d2": self.model_a_ks.d2}
+        if self.model_a_pm:
+            d["model_a_pm"] = {"p_above": self.model_a_pm.p_above, "p_below": self.model_a_pm.p_below, "d2": self.model_a_pm.d2}
+        # Model B
+        if self.adf:
+            d["adf"] = {"statistic": self.adf.statistic, "pvalue": self.adf.pvalue, "is_stationary": self.adf.is_stationary, "n_obs": self.adf.n_obs}
+        if self.ou:
+            d["ou"] = {"theta": self.ou.theta, "mu": self.ou.mu, "sigma": self.ou.sigma, "half_life_s": self.ou.half_life_s}
+        # Model C
+        if self.copula:
+            d["copula"] = {"rho": self.copula.rho, "nu": self.copula.nu, "kendall_tau": self.copula.kendall_tau, "n_obs": self.copula.n_obs}
+        if self.model_c_a:
+            d["model_c_a"] = {"p_ww": self.model_c_a.p_ww, "p_wl": self.model_c_a.p_wl, "p_lw": self.model_c_a.p_lw, "p_ll": self.model_c_a.p_ll}
+        if self.model_c_b:
+            d["model_c_b"] = {"p_ww": self.model_c_b.p_ww, "p_wl": self.model_c_b.p_wl, "p_lw": self.model_c_b.p_lw, "p_ll": self.model_c_b.p_ll}
+        # Model D
+        if self.model_d:
+            md = self.model_d
+            gates_dict = {k: {"passed": v[0], "reason": v[1]} for k, v in md.gates.items()}
+            d["model_d"] = {
+                "ev_a": md.ev_a, "ev_b": md.ev_b, "chosen": md.chosen, "ev": md.ev,
+                "cost": md.cost, "fee_ks": md.fee_ks, "fee_pm": md.fee_pm,
+                "gates": gates_dict, "all_gates_passed": md.all_gates_passed,
+            }
+        return d
+
 
 class ModelOrchestrator:
     """

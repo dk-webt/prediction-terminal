@@ -65,50 +65,121 @@ function OracleAlignmentDbg({ snapshot }: { snapshot: BtcSnapshot }) {
   const show = useStore((s) => s.showBtcGraphsDbg)
   if (!show) return null
 
+  const ms = snapshot.model_state
   const oa = snapshot.oracle_aligned
-  if (!oa) {
-    return (
-      <div className="btc-debug-section">
-        <div className="btc-section-title" style={{ color: '#ff6600' }}>ORACLE ALIGNMENT DEBUG</div>
-        <span className="btc-dim">Waiting for aligned ticks (BRTI + Chainlink in same 1s bin)...</span>
-      </div>
-    )
-  }
+  const mono = { fontFamily: 'monospace' } as const
+  const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 16px', fontSize: 11 } as const
 
-  const spreadColor = Math.abs(oa.latest_spread) > 5 ? '#ff4444' : Math.abs(oa.latest_spread) > 2 ? '#ffaa00' : '#00cc44'
-  const brtiLat = oa.latency_brti_ms
-  const clLat = oa.latency_chainlink_ms
-  const brtiLatColor = brtiLat > 500 ? '#ff4444' : brtiLat > 200 ? '#ffaa00' : '#00cc44'
-  const clLatColor = clLat > 1500 ? '#ff4444' : clLat > 800 ? '#ffaa00' : '#00cc44'
-  const binTime = new Date(oa.bin_ts * 1000).toLocaleTimeString()
+  const pctColor = (v: number, lo: number, hi: number) =>
+    v > hi ? '#ff4444' : v > lo ? '#ffaa00' : '#00cc44'
+  const gateIcon = (passed: boolean) =>
+    passed ? '\u2713' : '\u2717'
+  const gateColor = (passed: boolean) =>
+    passed ? '#00cc44' : '#ff4444'
 
   return (
     <div className="btc-debug-section">
       <div className="btc-section-title" style={{ color: '#ff6600' }}>
-        ORACLE ALIGNMENT DEBUG — {oa.aligned_ticks} aligned ticks
+        MODEL DEBUG — {oa?.aligned_ticks ?? 0} aligned ticks{ms?.tau_min != null ? ` — ${ms.tau_min.toFixed(1)} min left` : ''}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: 11 }}>
-        <span className="btc-dim">Latest Spread (BRTI − CL):</span>
-        <span style={{ color: spreadColor, fontFamily: 'monospace' }}>${oa.latest_spread.toFixed(4)}</span>
 
-        <span className="btc-dim">Avg Spread:</span>
-        <span style={{ fontFamily: 'monospace' }}>${oa.avg_spread.toFixed(4)}</span>
+      {/* Oracle alignment */}
+      {oa && (
+        <div style={{ ...grid, marginBottom: 6 }}>
+          <span className="btc-dim">Spread (BRTI-CL):</span>
+          <span style={{ ...mono, color: pctColor(Math.abs(oa.latest_spread), 2, 5) }}>${oa.latest_spread.toFixed(2)} (avg ${oa.avg_spread.toFixed(2)})</span>
+          <span className="btc-dim">Latency BRTI / CL:</span>
+          <span style={mono}>{oa.latency_brti_ms.toFixed(0)}ms / {oa.latency_chainlink_ms.toFixed(0)}ms</span>
+        </div>
+      )}
 
-        <span className="btc-dim">BRTI Price:</span>
-        <span style={{ fontFamily: 'monospace' }}>${oa.latest_brti.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+      {!ms ? (
+        <span className="btc-dim">Waiting for model compute (updates every 10s)...</span>
+      ) : (
+        <>
+          {/* Model B: ADF + OU */}
+          <div style={{ ...grid, marginBottom: 4 }}>
+            <span className="btc-dim">ADF:</span>
+            <span style={{ ...mono, color: ms.adf?.is_stationary ? '#00cc44' : '#ff4444' }}>
+              {ms.adf ? `${ms.adf.statistic.toFixed(3)} p=${ms.adf.pvalue.toFixed(4)} ${ms.adf.is_stationary ? 'STATIONARY' : 'NON-STATIONARY'}` : 'N/A'}
+            </span>
+            <span className="btc-dim">OU:</span>
+            <span style={mono}>
+              {ms.ou ? `\u03B8=${ms.ou.theta.toFixed(4)} \u03BC=$${ms.ou.mu.toFixed(2)} \u03C3=$${ms.ou.sigma.toFixed(2)} HL=${ms.ou.half_life_s.toFixed(1)}s` : 'N/A'}
+            </span>
+          </div>
 
-        <span className="btc-dim">Chainlink Price:</span>
-        <span style={{ fontFamily: 'monospace' }}>${oa.latest_chainlink.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          {/* Model A: probabilities */}
+          {ms.sigma_15m && (
+            <div style={{ ...grid, marginBottom: 4 }}>
+              <span className="btc-dim">KS P(above ${ms.ks_strike?.toLocaleString()}):</span>
+              <span style={mono}>{ms.model_a_ks ? `${(ms.model_a_ks.p_above * 100).toFixed(1)}%` : 'N/A'}</span>
+              <span className="btc-dim">PM P(above ${ms.pm_strike?.toLocaleString()}):</span>
+              <span style={mono}>{ms.model_a_pm ? `${(ms.model_a_pm.p_above * 100).toFixed(1)}%` : 'N/A'}</span>
+              <span className="btc-dim">{'\u03C3'}_15m:</span>
+              <span style={mono}>{ms.sigma_15m.toFixed(6)}</span>
+            </div>
+          )}
 
-        <span className="btc-dim">BRTI Latency (local−server):</span>
-        <span style={{ color: brtiLatColor, fontFamily: 'monospace' }}>{brtiLat.toFixed(0)}ms</span>
+          {/* Model C: copula + joint probs */}
+          {ms.copula && (
+            <div style={{ ...grid, marginBottom: 4 }}>
+              <span className="btc-dim">Copula:</span>
+              <span style={mono}>
+                <span style={{ color: pctColor(1 - ms.copula.rho, 0.2, 0.5) }}>{'\u03C1'}={ms.copula.rho.toFixed(3)}</span>
+                {' '}{'\u03BD'}={ms.copula.nu.toFixed(1)} {'\u03C4'}={ms.copula.kendall_tau.toFixed(3)}
+              </span>
+            </div>
+          )}
+          {ms.model_c_a && ms.model_c_b && (
+            <div style={{ ...grid, marginBottom: 4 }}>
+              <span className="btc-dim">Strat A (KS YES+PM NO):</span>
+              <span style={mono}>
+                WW={ms.model_c_a.p_ww.toFixed(3)} WL={ms.model_c_a.p_wl.toFixed(3)} LW={ms.model_c_a.p_lw.toFixed(3)}{' '}
+                <span style={{ color: pctColor(ms.model_c_a.p_ll, 0.05, 0.15) }}>LL={ms.model_c_a.p_ll.toFixed(3)}</span>
+              </span>
+              <span className="btc-dim">Strat B (KS NO+PM YES):</span>
+              <span style={mono}>
+                WW={ms.model_c_b.p_ww.toFixed(3)} WL={ms.model_c_b.p_wl.toFixed(3)} LW={ms.model_c_b.p_lw.toFixed(3)}{' '}
+                <span style={{ color: pctColor(ms.model_c_b.p_ll, 0.05, 0.15) }}>LL={ms.model_c_b.p_ll.toFixed(3)}</span>
+              </span>
+            </div>
+          )}
 
-        <span className="btc-dim">Chainlink Latency (local−server):</span>
-        <span style={{ color: clLatColor, fontFamily: 'monospace' }}>{clLat.toFixed(0)}ms</span>
-
-        <span className="btc-dim">Last Bin:</span>
-        <span style={{ fontFamily: 'monospace' }}>{binTime}</span>
-      </div>
+          {/* Model D: EV + trade signal */}
+          {ms.model_d && (
+            <div style={{ marginTop: 4, padding: '4px 0', borderTop: '1px solid #ff660033' }}>
+              <div style={{ ...grid }}>
+                <span className="btc-dim">EV Strat A:</span>
+                <span style={{ ...mono, color: ms.model_d.ev_a > 0.02 ? '#00cc44' : ms.model_d.ev_a > 0 ? '#ffaa00' : '#ff4444' }}>
+                  ${ms.model_d.ev_a > -100 ? ms.model_d.ev_a.toFixed(4) : 'N/A'}
+                </span>
+                <span className="btc-dim">EV Strat B:</span>
+                <span style={{ ...mono, color: ms.model_d.ev_b > 0.02 ? '#00cc44' : ms.model_d.ev_b > 0 ? '#ffaa00' : '#ff4444' }}>
+                  ${ms.model_d.ev_b > -100 ? ms.model_d.ev_b.toFixed(4) : 'N/A'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, fontSize: 11, marginTop: 4 }}>
+                <span className="btc-dim">Gates:</span>
+                {Object.entries(ms.model_d.gates).map(([name, g]) => (
+                  <span key={name} style={{ ...mono, color: gateColor(g.passed) }} title={g.reason}>
+                    {name}:{gateIcon(g.passed)}
+                  </span>
+                ))}
+              </div>
+              <div style={{ marginTop: 4, fontSize: 12, fontWeight: 'bold' }}>
+                {ms.model_d.all_gates_passed && ms.model_d.chosen ? (
+                  <span style={{ color: '#00ff44' }}>
+                    TRADE {ms.model_d.chosen} — EV=${ms.model_d.ev.toFixed(4)} cost=${ms.model_d.cost.toFixed(4)} fees=${(ms.model_d.fee_ks + ms.model_d.fee_pm).toFixed(4)}
+                  </span>
+                ) : (
+                  <span style={{ color: '#ff4444' }}>NO TRADE</span>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }

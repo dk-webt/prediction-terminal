@@ -118,6 +118,31 @@ export interface BtcSnapshot {
     latency_chainlink_ms: number
     bin_ts: number
   } | null
+  model_state?: ModelStateData | null
+}
+
+export interface ModelStateData {
+  n_aligned_ticks: number
+  sigma_15m: number | null
+  tau: number | null
+  tau_min: number | null
+  brti_price: number | null
+  chainlink_price: number | null
+  ks_strike: number | null
+  pm_strike: number | null
+  model_a_ks?: { p_above: number; p_below: number; d2: number }
+  model_a_pm?: { p_above: number; p_below: number; d2: number }
+  adf?: { statistic: number; pvalue: number; is_stationary: boolean; n_obs: number }
+  ou?: { theta: number; mu: number; sigma: number; half_life_s: number }
+  copula?: { rho: number; nu: number; kendall_tau: number; n_obs: number }
+  model_c_a?: { p_ww: number; p_wl: number; p_lw: number; p_ll: number }
+  model_c_b?: { p_ww: number; p_wl: number; p_lw: number; p_ll: number }
+  model_d?: {
+    ev_a: number; ev_b: number; chosen: string | null; ev: number
+    cost: number; fee_ks: number; fee_pm: number
+    gates: Record<string, { passed: boolean; reason: string }>
+    all_gates_passed: boolean
+  }
 }
 
 export interface BtcTimeSeriesPoint {
