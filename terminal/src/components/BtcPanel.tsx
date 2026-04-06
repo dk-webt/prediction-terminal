@@ -81,6 +81,19 @@ function OracleAlignmentDbg({ snapshot }: { snapshot: BtcSnapshot }) {
     <div className="btc-debug-section">
       <div className="btc-section-title" style={{ color: '#ff6600' }}>
         MODEL DEBUG — {oa?.aligned_ticks ?? 0} aligned ticks{ms?.tau_min != null ? ` — ${ms.tau_min.toFixed(1)} min left` : ''}
+        {ms?.staleness && (
+          <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 'normal' }}>
+            {(['oracle', 'prices', 'sigma'] as const).map(key => {
+              const stale = ms.staleness![`${key}_stale` as keyof typeof ms.staleness] as boolean
+              const age = ms.staleness![`${key}_age_s` as keyof typeof ms.staleness] as number | null
+              return (
+                <span key={key} style={{ marginRight: 6, color: stale ? '#ff4444' : '#444' }}>
+                  {key}:{stale ? `STALE${age != null ? ` ${age.toFixed(0)}s` : ''}` : `${age != null ? `${age.toFixed(0)}s` : 'ok'}`}
+                </span>
+              )
+            })}
+          </span>
+        )}
       </div>
 
       {/* Oracle alignment */}

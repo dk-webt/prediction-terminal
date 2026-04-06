@@ -591,6 +591,9 @@ def model_d_execute(
     ou: 'OUParams | None',
     tau: float | None,
     min_alpha: float = MODEL_D_MIN_ALPHA,
+    oracle_stale: bool = False,
+    prices_stale: bool = False,
+    sigma_stale: bool = False,
 ) -> ModelDResult:
     """
     Full Model D execution decision with gate checks.
@@ -605,8 +608,25 @@ def model_d_execute(
         ou: OU parameters from Model B
         tau: time remaining as fraction of 15-min window (0-1)
         min_alpha: minimum EV threshold to trigger (default $0.02)
+        oracle_stale: True if aligned oracle ticks are stale
+        prices_stale: True if ask prices are stale
+        sigma_stale: True if Deribit IV is stale
     """
     gates = {}
+
+    # Gate 0: Data freshness
+    if oracle_stale:
+        gates["oracle_fresh"] = (False, "oracle data stale (>10s)")
+    else:
+        gates["oracle_fresh"] = (True, "ok")
+    if prices_stale:
+        gates["prices_fresh"] = (False, "ask prices stale (>15s)")
+    else:
+        gates["prices_fresh"] = (True, "ok")
+    if sigma_stale:
+        gates["sigma_fresh"] = (False, "Deribit IV stale (>10min)")
+    else:
+        gates["sigma_fresh"] = (True, "ok")
 
     # Gate 1: ADF stationarity
     if adf is None:
@@ -947,6 +967,13 @@ class ModelState:
     ks_strike: float | None
     pm_strike: float | None
     n_aligned_ticks: int
+    # Staleness
+    oracle_stale: bool           # True if aligned ticks stopped flowing
+    oracle_age_s: float | None   # seconds since last aligned tick
+    prices_stale: bool           # True if ask prices are old
+    prices_age_s: float | None   # seconds since prices were updated
+    sigma_stale: bool            # True if Deribit IV is old
+    sigma_age_s: float | None    # seconds since Deribit IV was fetched
 
     def to_dict(self) -> dict:
         """Serialize to JSON-safe dict for frontend consumption."""
@@ -959,6 +986,14 @@ class ModelState:
             "chainlink_price": self.chainlink_price,
             "ks_strike": self.ks_strike,
             "pm_strike": self.pm_strike,
+            "staleness": {
+                "oracle_stale": self.oracle_stale,
+                "oracle_age_s": round(self.oracle_age_s, 1) if self.oracle_age_s is not None else None,
+                "prices_stale": self.prices_stale,
+                "prices_age_s": round(self.prices_age_s, 1) if self.prices_age_s is not None else None,
+                "sigma_stale": self.sigma_stale,
+                "sigma_age_s": round(self.sigma_age_s, 1) if self.sigma_age_s is not None else None,
+            },
         }
         # Model A
         if self.model_a_ks:
@@ -1004,6 +1039,11 @@ class ModelOrchestrator:
         state = orch.compute()
     """
 
+    # Staleness thresholds
+    ORACLE_STALE_S = 10.0    # aligned ticks older than 10s = stale
+    PRICES_STALE_S = 15.0    # ask prices older than 15s = stale
+    SIGMA_STALE_S = 600.0    # Deribit IV older than 10 min = stale
+
     def __init__(self, adf_window_s: int = 1200, ou_window_s: int = 600):
         self._analyzer = SpreadAnalyzer(window_s=adf_window_s)
         self._ou_window_s = ou_window_s
@@ -1013,6 +1053,7 @@ class ModelOrchestrator:
 
         # External inputs (set by BtcStreamManager)
         self._sigma_15m: float | None = None
+        self._sigma_updated: float = 0.0     # time.time() when sigma was last set
         self._ks_strike: float = 0.0
         self._pm_strike: float = 0.0
         self._window_end_ts: float = 0.0
@@ -1023,6 +1064,10 @@ class ModelOrchestrator:
         self._pm_up_ask: float = 0.0
         self._pm_down_ask: float = 0.0
         self._pm_fee_bps: float = 200.0  # default 2%, updated from token metadata
+        self._prices_updated: float = 0.0    # time.time() when prices were last set
+
+        # Aligned tick freshness
+        self._last_tick_ts: float = 0.0      # time.time() when last tick arrived
 
         # Cached model outputs (recomputed on compute())
         self._last_state: ModelState | None = None
@@ -1031,12 +1076,14 @@ class ModelOrchestrator:
     def on_aligned_tick(self, bin_ts: int, brti_price: float,
                         chainlink_price: float, spread: float):
         """Feed a new aligned tick from OracleAlignmentBuffer."""
+        import time as _time
         self._analyzer.add_tick(bin_ts, spread)
         self._brti_prices.append(brti_price)
         self._cl_prices.append(chainlink_price)
         if len(self._brti_prices) > self._max_prices:
             self._brti_prices.pop(0)
             self._cl_prices.pop(0)
+        self._last_tick_ts = _time.time()
 
     def set_strikes(self, ks_strike: float, pm_strike: float,
                     window_end_ts: float):
@@ -1047,17 +1094,22 @@ class ModelOrchestrator:
 
     def set_sigma(self, sigma_15m: float | None):
         """Update the 15-min implied volatility from Deribit."""
+        import time as _time
         self._sigma_15m = sigma_15m
+        if sigma_15m is not None:
+            self._sigma_updated = _time.time()
 
     def set_prices(self, ks_yes_ask: float, ks_no_ask: float,
                    pm_up_ask: float, pm_down_ask: float,
                    pm_fee_bps: float = 200.0):
         """Update live ask prices and PM fee rate for Model D."""
+        import time as _time
         self._ks_yes_ask = ks_yes_ask
         self._ks_no_ask = ks_no_ask
         self._pm_up_ask = pm_up_ask
         self._pm_down_ask = pm_down_ask
         self._pm_fee_bps = pm_fee_bps
+        self._prices_updated = _time.time()
 
     def compute(self, now: float | None = None) -> ModelState:
         """
@@ -1070,6 +1122,14 @@ class ModelOrchestrator:
         if now is None:
             now = _time.time()
 
+        # Staleness checks
+        oracle_age = (now - self._last_tick_ts) if self._last_tick_ts > 0 else None
+        oracle_stale = oracle_age is None or oracle_age > self.ORACLE_STALE_S
+        prices_age = (now - self._prices_updated) if self._prices_updated > 0 else None
+        prices_stale = prices_age is None or prices_age > self.PRICES_STALE_S
+        sigma_age = (now - self._sigma_updated) if self._sigma_updated > 0 else None
+        sigma_stale = sigma_age is None or sigma_age > self.SIGMA_STALE_S
+
         # Latest aligned prices
         brti = self._brti_prices[-1] if self._brti_prices else None
         cl = self._cl_prices[-1] if self._cl_prices else None
@@ -1080,20 +1140,21 @@ class ModelOrchestrator:
             remaining = max(0, self._window_end_ts - now)
             tau = min(1.0, remaining / (15 * 60))
 
-        # Model A
+        # Model A — skip if oracle or sigma is stale
         model_a_ks = None
         model_a_pm = None
         if brti and cl and self._sigma_15m and tau is not None and tau > 0:
-            if self._ks_strike > 0:
-                model_a_ks = model_a_probability(
-                    S=brti, K=self._ks_strike, tau=tau,
-                    sigma_15m=self._sigma_15m,
-                )
-            if self._pm_strike > 0:
-                model_a_pm = model_a_probability(
-                    S=cl, K=self._pm_strike, tau=tau,
-                    sigma_15m=self._sigma_15m,
-                )
+            if not oracle_stale and not sigma_stale:
+                if self._ks_strike > 0:
+                    model_a_ks = model_a_probability(
+                        S=brti, K=self._ks_strike, tau=tau,
+                        sigma_15m=self._sigma_15m,
+                    )
+                if self._pm_strike > 0:
+                    model_a_pm = model_a_probability(
+                        S=cl, K=self._pm_strike, tau=tau,
+                        sigma_15m=self._sigma_15m,
+                    )
 
         # Model B
         adf = self._analyzer.compute_adf()
@@ -1118,7 +1179,7 @@ class ModelOrchestrator:
                     copula.rho, copula.nu, strategy="B",
                 )
 
-        # Model D — execution decision
+        # Model D — execution decision (includes staleness gate)
         model_d_result = None
         if model_c_a and model_c_b:
             prices_a = StrategyPrices(
@@ -1134,6 +1195,9 @@ class ModelOrchestrator:
                 prices_a=prices_a, prices_b=prices_b,
                 fee_pm_bps=self._pm_fee_bps,
                 adf=adf, ou=ou, tau=tau,
+                oracle_stale=oracle_stale,
+                prices_stale=prices_stale,
+                sigma_stale=sigma_stale,
             )
 
         state = ModelState(
@@ -1152,6 +1216,12 @@ class ModelOrchestrator:
             ks_strike=self._ks_strike if self._ks_strike > 0 else None,
             pm_strike=self._pm_strike if self._pm_strike > 0 else None,
             n_aligned_ticks=len(self._brti_prices),
+            oracle_stale=oracle_stale,
+            oracle_age_s=oracle_age,
+            prices_stale=prices_stale,
+            prices_age_s=prices_age,
+            sigma_stale=sigma_stale,
+            sigma_age_s=sigma_age,
         )
         self._last_state = state
         self._last_compute_ts = now

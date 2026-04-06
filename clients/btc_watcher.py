@@ -457,6 +457,7 @@ class OracleAlignmentBuffer:
     def __init__(self, max_ticks: int = 900, on_tick=None):
         self.ticks: deque[AlignedTick] = deque(maxlen=max_ticks)
         self._on_tick = on_tick  # callback(AlignedTick) on each new aligned tick
+        self.last_tick_time: float = 0.0  # monotonic time of last aligned tick
         # Pending values for current bin
         self._brti: dict | None = None       # {price, local_ts, server_ts}
         self._chainlink: dict | None = None  # {price, local_ts, server_ts}
@@ -507,6 +508,8 @@ class OracleAlignmentBuffer:
             is_new = False
         else:
             self.ticks.append(tick)
+
+        self.last_tick_time = time.monotonic()
 
         # Fire callback for new ticks (not updates to existing bin)
         if is_new and self._on_tick:

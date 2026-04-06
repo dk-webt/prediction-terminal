@@ -196,6 +196,15 @@ class DeribitPoller:
                 log.warning("Deribit poll error: %s", e)
             await asyncio.sleep(self.interval_s)
 
+    STALE_THRESHOLD = 600  # 10 min — sigma should refresh every 5 min
+
+    @property
+    def is_stale(self) -> bool:
+        """True if sigma hasn't been updated within threshold."""
+        if self.last_fetch <= 0:
+            return True
+        return (time.time() - self.last_fetch) > self.STALE_THRESHOLD
+
     def get_status(self) -> dict:
         """Return current state as a dict."""
         age = time.time() - self.last_fetch if self.last_fetch > 0 else None
@@ -204,5 +213,6 @@ class DeribitPoller:
             "iv_annual_pct": self.iv_annual_pct,
             "source": self.source,
             "age_s": round(age, 1) if age is not None else None,
+            "is_stale": self.is_stale,
             "hours_to_expiry": self.hours_to_expiry,
         }

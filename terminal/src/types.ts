@@ -130,6 +130,11 @@ export interface ModelStateData {
   chainlink_price: number | null
   ks_strike: number | null
   pm_strike: number | null
+  staleness?: {
+    oracle_stale: boolean; oracle_age_s: number | null
+    prices_stale: boolean; prices_age_s: number | null
+    sigma_stale: boolean; sigma_age_s: number | null
+  }
   model_a_ks?: { p_above: number; p_below: number; d2: number }
   model_a_pm?: { p_above: number; p_below: number; d2: number }
   adf?: { statistic: number; pvalue: number; is_stationary: boolean; n_obs: number }
