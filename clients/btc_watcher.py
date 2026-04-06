@@ -1023,7 +1023,10 @@ class BtcStreamManager:
         while self._running:
             try:
                 await asyncio.sleep(self.MODEL_COMPUTE_INTERVAL)
-                state = self.get_model_state()
+                # Run compute off the event loop to avoid blocking WS processing
+                self._sync_orch_sigma()
+                self._sync_orch_prices()
+                state = await asyncio.to_thread(self._model_orch.compute)
                 self._cached_model_dict = state.to_dict()
                 # Log model state summary at INFO on first compute, then DEBUG
                 n = state.n_aligned_ticks
