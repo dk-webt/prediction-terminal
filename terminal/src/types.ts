@@ -143,6 +143,7 @@ export interface ModelStateData {
   model_c_a?: { p_ww: number; p_wl: number; p_lw: number; p_ll: number }
   model_c_b?: { p_ww: number; p_wl: number; p_lw: number; p_ll: number }
   model_d?: {
+    ev_a_raw: number; ev_b_raw: number
     ev_a: number; ev_b: number; chosen: string | null; ev: number
     cost_a: number; cost_b: number
     fee_ks: number; fee_pm_a: number; fee_pm_b: number

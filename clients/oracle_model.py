@@ -535,8 +535,10 @@ KALSHI_TAKER_FEE = 0.07     # Kalshi taker fee: 7c per contract on fill
 class ModelDResult:
     """Friction-adjusted expected value and trade recommendation."""
     # Per-strategy EV
-    ev_a: float              # EV for Strategy A (KS YES + PM NO)
-    ev_b: float              # EV for Strategy B (KS NO + PM YES)
+    ev_a_raw: float          # EV Strategy A without fees (cost only)
+    ev_b_raw: float          # EV Strategy B without fees (cost only)
+    ev_a: float              # EV for Strategy A (friction-adjusted)
+    ev_b: float              # EV for Strategy B (friction-adjusted)
     # Cost breakdown per strategy
     cost_a: float            # total premium Strategy A (C_k + C_p)
     cost_b: float            # total premium Strategy B
@@ -675,11 +677,15 @@ def model_d_execute(
     fee_pm_a = prices_a.pm_ask * fee_pm_rate
     fee_pm_b = prices_b.pm_ask * fee_pm_rate
 
+    ev_a_raw = -999.0
+    ev_b_raw = -999.0
     ev_a = -999.0
     ev_b = -999.0
     if model_c_a and cost_a > 0:
+        ev_a_raw = model_d_ev(model_c_a, cost_a, 0.0, 0.0)
         ev_a = model_d_ev(model_c_a, cost_a, fee_ks, fee_pm_a)
     if model_c_b and cost_b > 0:
+        ev_b_raw = model_d_ev(model_c_b, cost_b, 0.0, 0.0)
         ev_b = model_d_ev(model_c_b, cost_b, fee_ks, fee_pm_b)
 
     # Gate 5: EV threshold
@@ -697,6 +703,8 @@ def model_d_execute(
         chosen = "A" if ev_a >= ev_b else "B"
 
     return ModelDResult(
+        ev_a_raw=round(ev_a_raw, 6),
+        ev_b_raw=round(ev_b_raw, 6),
         ev_a=round(ev_a, 6),
         ev_b=round(ev_b, 6),
         cost_a=round(cost_a, 4),
@@ -1020,6 +1028,7 @@ class ModelState:
             md = self.model_d
             gates_dict = {k: {"passed": bool(v[0]), "reason": str(v[1])} for k, v in md.gates.items()}
             d["model_d"] = {
+                "ev_a_raw": sf(md.ev_a_raw), "ev_b_raw": sf(md.ev_b_raw),
                 "ev_a": sf(md.ev_a), "ev_b": sf(md.ev_b), "chosen": md.chosen, "ev": sf(md.ev),
                 "cost_a": sf(md.cost_a), "cost_b": sf(md.cost_b),
                 "fee_ks": sf(md.fee_ks), "fee_pm_a": sf(md.fee_pm_a), "fee_pm_b": sf(md.fee_pm_b),

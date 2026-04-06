@@ -184,6 +184,11 @@ function OracleAlignmentDbg({ snapshot }: { snapshot: BtcSnapshot }) {
             {ms?.model_d ? (
               <>
                 <div style={{ ...grid }}>
+                  <span className="btc-dim">EV (no fees):</span>
+                  <span style={mono}>
+                    A=${ms.model_d.ev_a_raw > -100 ? ms.model_d.ev_a_raw.toFixed(4) : 'N/A'}{' '}
+                    B=${ms.model_d.ev_b_raw > -100 ? ms.model_d.ev_b_raw.toFixed(4) : 'N/A'}
+                  </span>
                   <span className="btc-dim">Strat A (KS YES+PM NO):</span>
                   <span style={{ ...mono, color: ms.model_d.ev_a > 0.02 ? '#00cc44' : ms.model_d.ev_a > 0 ? '#ffaa00' : '#ff4444' }}>
                     EV=${ms.model_d.ev_a > -100 ? ms.model_d.ev_a.toFixed(4) : 'N/A'} cost=${ms.model_d.cost_a.toFixed(4)} fees=${(ms.model_d.fee_ks + ms.model_d.fee_pm_a).toFixed(4)}
