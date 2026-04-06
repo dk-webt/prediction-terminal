@@ -97,8 +97,22 @@ export default function App() {
     }
 
     // ── BTC message handler (streaming + debug) ───────────────────────────
+    let _btcMsgCount = 0
+    let _btcLastLog = 0
     const onBtcMessage = (msg: Record<string, unknown>) => {
       if (msg.type === 'btc_update') {
+        _btcMsgCount++
+        const now = Date.now()
+        // Log every 30s: message rate + model_state presence
+        if (now - _btcLastLog > 30000) {
+          const ms = msg.model_state as Record<string, unknown> | null
+          console.log(
+            `[BTC WS] msgs=${_btcMsgCount} model_state=${ms ? `ticks=${ms.n_aligned_ticks}` : 'null'}`,
+          )
+          _btcLastLog = now
+          _btcMsgCount = 0
+        }
+
         const state = useStore.getState()
         state.setBtcSnapshot(msg as never)
         state.setLoading(false)
