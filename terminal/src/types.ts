@@ -161,6 +161,12 @@ export interface BtcTimeSeriesPoint {
   chainlink: number | null  // Chainlink BTC/USD via PM RTDS (PM settlement source)
 }
 
+export interface AskPricePoint {
+  time: number
+  yesAsk: number | null
+  noAsk: number | null
+}
+
 export interface OrderConfirmation {
   order_id: string
   summary: string

@@ -150,6 +150,13 @@ export default function App() {
         if (comboA !== null || comboB !== null) {
           state.appendBtcTick({ time: comboTime, priceGap, comboA, comboB, coinbase, chainlink })
         }
+        // Ask price series (same time base as combos, resets on roll)
+        if (yesAsk !== null || noAsk !== null) {
+          state.appendKsAskTick({ time: comboTime, yesAsk, noAsk })
+        }
+        if (upAsk !== null || downAsk !== null) {
+          state.appendPmAskTick({ time: comboTime, yesAsk: upAsk, noAsk: downAsk })
+        }
 
         // Oracle charts: server-aligned bin_ts, no forward fill (gaps are gaps)
         const oracleAligned = snap.oracle_aligned as Record<string, unknown> | null

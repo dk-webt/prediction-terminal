@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createChart, CrosshairMode, LineStyle, LineSeries } from 'lightweight-charts'
 import type { IChartApi, ISeriesApi, UTCTimestamp, LogicalRange } from 'lightweight-charts'
 import { useStore } from '../store'
-import type { BtcSnapshot } from '../types'
+import type { AskPricePoint, BtcSnapshot } from '../types'
 
 /** Shared sync group for oracle charts — when one pans/zooms, others follow. */
 type ChartSyncGroup = {
@@ -87,6 +87,22 @@ function PlatformStatusDot({ lastUpdate }: { lastUpdate: string | undefined }) {
   const { label, color } = usePlatformStatus(lastUpdate)
   return (
     <span style={{ color, fontSize: 9, marginLeft: 'auto', fontWeight: 'normal' }}>{label}</span>
+  )
+}
+
+function ComboSyncedCharts() {
+  const showDbg = useStore((s) => s.showBtcGraphsDbg)
+  const syncGroup = useChartSyncGroup()
+  return (
+    <>
+      <BtcArbitrageChart syncGroup={syncGroup.current} />
+      {showDbg && (
+        <>
+          <BtcAskPriceChart storeKey="ksAskSeries" title="KS ASK: YES (UP) / NO (DOWN)" yesColor="#5599dd" noColor="#dd5544" syncGroup={syncGroup.current} />
+          <BtcAskPriceChart storeKey="pmAskSeries" title="PM ASK: UP / DOWN" yesColor="#44bb66" noColor="#dd7744" syncGroup={syncGroup.current} />
+        </>
+      )}
+    </>
   )
 }
 
@@ -413,7 +429,7 @@ function BtcPriceGapChart({ syncGroup }: { syncGroup?: ChartSyncGroup }) {
   )
 }
 
-function BtcArbitrageChart() {
+function BtcArbitrageChart({ syncGroup }: { syncGroup?: ChartSyncGroup }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const comboARef = useRef<ISeriesApi<'Line'> | null>(null)
@@ -453,6 +469,7 @@ function BtcArbitrageChart() {
     chartRef.current = chart
     comboARef.current = seriesA
     comboBRef.current = seriesB
+    if (syncGroup) registerChartSync(syncGroup, chart)
 
     const ro = new ResizeObserver(entries => {
       const { width } = entries[0].contentRect
@@ -460,7 +477,11 @@ function BtcArbitrageChart() {
     })
     ro.observe(containerRef.current)
 
-    return () => { ro.disconnect(); chart.remove() }
+    return () => {
+      if (syncGroup) unregisterChartSync(syncGroup, chart)
+      ro.disconnect()
+      chart.remove()
+    }
   }, [])
 
   useEffect(() => {
@@ -508,6 +529,74 @@ function BtcArbitrageChart() {
         <span style={{ color: '#ddaa44' }}>KS NO + PM UP</span>
         {' (1.0 = break-even)'}
       </div>
+      <div ref={containerRef} />
+    </div>
+  )
+}
+
+function BtcAskPriceChart({ storeKey, title, yesColor, noColor, syncGroup }: {
+  storeKey: 'ksAskSeries' | 'pmAskSeries'
+  title: string; yesColor: string; noColor: string; syncGroup?: ChartSyncGroup
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const yesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const noRef = useRef<ISeriesApi<'Line'> | null>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    const chart = createChart(containerRef.current, {
+      ...CHART_OPTIONS,
+      height: 200,
+      width: containerRef.current.clientWidth,
+    })
+    yesRef.current = chart.addSeries(LineSeries, {
+      color: yesColor, lineWidth: 2,
+      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+      title: 'YES',
+    })
+    noRef.current = chart.addSeries(LineSeries, {
+      color: noColor, lineWidth: 2,
+      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+      title: 'NO',
+    })
+    if (syncGroup) registerChartSync(syncGroup, chart)
+
+    const ro = new ResizeObserver(entries => {
+      const { width } = entries[0].contentRect
+      chart.applyOptions({ width })
+    })
+    ro.observe(containerRef.current)
+
+    return () => {
+      if (syncGroup) unregisterChartSync(syncGroup, chart)
+      ro.disconnect()
+      chart.remove()
+    }
+  }, [yesColor, noColor])
+
+  useEffect(() => {
+    let lastLen = 0
+    const unsub = useStore.subscribe((state) => {
+      const pts: AskPricePoint[] = state[storeKey]
+      if (!yesRef.current || !noRef.current) return
+      if (pts.length < lastLen) {
+        yesRef.current.setData(pts.filter(p => p.yesAsk != null).map(p => ({ time: p.time as UTCTimestamp, value: p.yesAsk! })))
+        noRef.current.setData(pts.filter(p => p.noAsk != null).map(p => ({ time: p.time as UTCTimestamp, value: p.noAsk! })))
+        lastLen = pts.length
+      } else if (pts.length > lastLen) {
+        for (let i = lastLen; i < pts.length; i++) {
+          if (pts[i].yesAsk != null) yesRef.current.update({ time: pts[i].time as UTCTimestamp, value: pts[i].yesAsk! })
+          if (pts[i].noAsk != null) noRef.current.update({ time: pts[i].time as UTCTimestamp, value: pts[i].noAsk! })
+        }
+        lastLen = pts.length
+      }
+    })
+    return unsub
+  }, [storeKey])
+
+  return (
+    <div className="btc-chart-container">
+      <div className="btc-chart-title">{title}</div>
       <div ref={containerRef} />
     </div>
   )
@@ -799,7 +888,7 @@ export default function BtcPanel() {
 
       {/* Time Series Charts */}
       <div className="btc-charts-section">
-        <BtcArbitrageChart />
+        <ComboSyncedCharts />
         <OracleSyncedCharts brti_exchanges={btcSnapshot.brti_active_exchanges} />
       </div>
 

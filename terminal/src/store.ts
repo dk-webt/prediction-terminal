@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type {
+  AskPricePoint,
   NormalizedEvent,
   ArbitrageResult,
   CompareResult,
@@ -39,6 +40,8 @@ interface TerminalState {
   btcAutoRefresh: boolean
   btcTimeSeries: { points: BtcTimeSeriesPoint[]; windowId: string }
   btcOracleSeries: BtcTimeSeriesPoint[]  // continuous oracle data (no roll reset)
+  ksAskSeries: AskPricePoint[]   // KS yes/no ask prices (resets on roll)
+  pmAskSeries: AskPricePoint[]   // PM up/down ask prices (resets on roll)
   fundKs: number       // available cash on Kalshi
   fundPm: number       // available cash on Polymarket
   fundPct: number      // percentage of funds to use (0-1)
@@ -88,6 +91,8 @@ interface TerminalState {
   setBtcAutoRefresh: (v: boolean) => void
   appendBtcTick: (point: BtcTimeSeriesPoint) => void
   appendOracleTick: (point: BtcTimeSeriesPoint) => void
+  appendKsAskTick: (point: AskPricePoint) => void
+  appendPmAskTick: (point: AskPricePoint) => void
   resetBtcTimeSeries: (windowId: string) => void
   setFundKs: (v: number) => void
   setFundPm: (v: number) => void
@@ -138,6 +143,8 @@ export const useStore = create<TerminalState>((set) => ({
   btcAutoRefresh: false,
   btcTimeSeries: { points: [], windowId: '' },
   btcOracleSeries: [],
+  ksAskSeries: [],
+  pmAskSeries: [],
   fundKs: 0,
   fundPm: 0,
   fundPct: 1.0,
@@ -188,8 +195,20 @@ export const useStore = create<TerminalState>((set) => ({
     const next = pts.length >= 2000 ? [...pts.slice(-1999), point] : [...pts, point]
     return { btcOracleSeries: next }
   }),
+  appendKsAskTick: (point) => set((state) => {
+    const pts = state.ksAskSeries
+    const next = pts.length >= 2000 ? [...pts.slice(-1999), point] : [...pts, point]
+    return { ksAskSeries: next }
+  }),
+  appendPmAskTick: (point) => set((state) => {
+    const pts = state.pmAskSeries
+    const next = pts.length >= 2000 ? [...pts.slice(-1999), point] : [...pts, point]
+    return { pmAskSeries: next }
+  }),
   resetBtcTimeSeries: (windowId) => set((state) => ({
     btcTimeSeries: { points: [], windowId },
+    ksAskSeries: [],
+    pmAskSeries: [],
   })),
   setFundKs: (fundKs) => set({ fundKs }),
   setFundPm: (fundPm) => set({ fundPm }),
