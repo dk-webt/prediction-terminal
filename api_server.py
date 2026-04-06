@@ -412,7 +412,8 @@ async def _btc_broadcast(snapshot: dict):
     for ws in _btc_subscribers:
         try:
             await ws.send_json(msg)
-        except Exception:
+        except Exception as e:
+            log.warning("BTC WS send failed (dropping subscriber): %s", e)
             dead.append(ws)
     for ws in dead:
         _btc_subscribers.discard(ws)

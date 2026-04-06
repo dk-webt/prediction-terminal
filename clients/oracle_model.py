@@ -96,7 +96,7 @@ def model_a_probability(
         return ModelAResult(
             p_above=1.0 if S > K else 0.0,
             p_below=0.0 if S > K else 1.0,
-            d2=float('inf') if S > K else float('-inf'),
+            d2=99.0 if S > K else -99.0,  # capped to avoid JSON infinity
             S=S, K=K, tau=0.0, sigma_15m=sigma_15m,
         )
 
@@ -975,8 +975,18 @@ class ModelState:
     sigma_stale: bool            # True if Deribit IV is old
     sigma_age_s: float | None    # seconds since Deribit IV was fetched
 
+    @staticmethod
+    def _safe_float(v: float | None) -> float | None:
+        """Clamp inf/nan to None for JSON safety."""
+        if v is None:
+            return None
+        if not math.isfinite(v):
+            return None
+        return v
+
     def to_dict(self) -> dict:
         """Serialize to JSON-safe dict for frontend consumption."""
+        sf = self._safe_float
         d: dict = {
             "n_aligned_ticks": self.n_aligned_ticks,
             "sigma_15m": self.sigma_15m,
@@ -997,28 +1007,28 @@ class ModelState:
         }
         # Model A
         if self.model_a_ks:
-            d["model_a_ks"] = {"p_above": self.model_a_ks.p_above, "p_below": self.model_a_ks.p_below, "d2": self.model_a_ks.d2}
+            d["model_a_ks"] = {"p_above": sf(self.model_a_ks.p_above), "p_below": sf(self.model_a_ks.p_below), "d2": sf(self.model_a_ks.d2)}
         if self.model_a_pm:
-            d["model_a_pm"] = {"p_above": self.model_a_pm.p_above, "p_below": self.model_a_pm.p_below, "d2": self.model_a_pm.d2}
+            d["model_a_pm"] = {"p_above": sf(self.model_a_pm.p_above), "p_below": sf(self.model_a_pm.p_below), "d2": sf(self.model_a_pm.d2)}
         # Model B
         if self.adf:
-            d["adf"] = {"statistic": self.adf.statistic, "pvalue": self.adf.pvalue, "is_stationary": self.adf.is_stationary, "n_obs": self.adf.n_obs}
+            d["adf"] = {"statistic": sf(self.adf.statistic), "pvalue": sf(self.adf.pvalue), "is_stationary": self.adf.is_stationary, "n_obs": self.adf.n_obs}
         if self.ou:
-            d["ou"] = {"theta": self.ou.theta, "mu": self.ou.mu, "sigma": self.ou.sigma, "half_life_s": self.ou.half_life_s}
+            d["ou"] = {"theta": sf(self.ou.theta), "mu": sf(self.ou.mu), "sigma": sf(self.ou.sigma), "half_life_s": sf(self.ou.half_life_s)}
         # Model C
         if self.copula:
-            d["copula"] = {"rho": self.copula.rho, "nu": self.copula.nu, "kendall_tau": self.copula.kendall_tau, "n_obs": self.copula.n_obs}
+            d["copula"] = {"rho": sf(self.copula.rho), "nu": sf(self.copula.nu), "kendall_tau": sf(self.copula.kendall_tau), "n_obs": self.copula.n_obs}
         if self.model_c_a:
-            d["model_c_a"] = {"p_ww": self.model_c_a.p_ww, "p_wl": self.model_c_a.p_wl, "p_lw": self.model_c_a.p_lw, "p_ll": self.model_c_a.p_ll}
+            d["model_c_a"] = {"p_ww": sf(self.model_c_a.p_ww), "p_wl": sf(self.model_c_a.p_wl), "p_lw": sf(self.model_c_a.p_lw), "p_ll": sf(self.model_c_a.p_ll)}
         if self.model_c_b:
-            d["model_c_b"] = {"p_ww": self.model_c_b.p_ww, "p_wl": self.model_c_b.p_wl, "p_lw": self.model_c_b.p_lw, "p_ll": self.model_c_b.p_ll}
+            d["model_c_b"] = {"p_ww": sf(self.model_c_b.p_ww), "p_wl": sf(self.model_c_b.p_wl), "p_lw": sf(self.model_c_b.p_lw), "p_ll": sf(self.model_c_b.p_ll)}
         # Model D
         if self.model_d:
             md = self.model_d
             gates_dict = {k: {"passed": v[0], "reason": v[1]} for k, v in md.gates.items()}
             d["model_d"] = {
-                "ev_a": md.ev_a, "ev_b": md.ev_b, "chosen": md.chosen, "ev": md.ev,
-                "cost": md.cost, "fee_ks": md.fee_ks, "fee_pm": md.fee_pm,
+                "ev_a": sf(md.ev_a), "ev_b": sf(md.ev_b), "chosen": md.chosen, "ev": sf(md.ev),
+                "cost": sf(md.cost), "fee_ks": sf(md.fee_ks), "fee_pm": sf(md.fee_pm),
                 "gates": gates_dict, "all_gates_passed": md.all_gates_passed,
             }
         return d
