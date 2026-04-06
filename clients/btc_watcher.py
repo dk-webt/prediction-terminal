@@ -745,6 +745,8 @@ class BtcStreamManager:
 
         # Periodic model compute (every 10s) for frontend debug overlay
         self._tasks.append(asyncio.create_task(self._model_compute_loop()))
+        # Health heartbeat (every 30s)
+        self._tasks.append(asyncio.create_task(self._heartbeat_loop()))
 
         # Start PM user channel for fill/order tracking if creds configured
         from config import POLYMARKET_API_KEY, POLYMARKET_API_SECRET, POLYMARKET_API_PASSPHRASE
@@ -1016,6 +1018,31 @@ class BtcStreamManager:
         return self._model_orch.compute()
 
     MODEL_COMPUTE_INTERVAL = 10.0  # seconds between model recomputes
+    HEARTBEAT_INTERVAL = 30.0     # seconds between health heartbeat logs
+
+    async def _heartbeat_loop(self):
+        """Periodic health heartbeat showing all stream states."""
+        while self._running:
+            try:
+                await asyncio.sleep(self.HEARTBEAT_INTERVAL)
+                now = time.monotonic()
+                ks_age = f"{now - self._ks_last_recv:.1f}s" if self._ks_last_recv > 0 else "never"
+                pm_age = f"{now - self._pm_last_recv:.1f}s" if self._pm_last_recv > 0 else "never"
+                buf_age = f"{now - self._oracle_buf.last_tick_time:.1f}s" if self._oracle_buf.last_tick_time > 0 else "never"
+                brti = f"${self._brti_price:,.0f}" if self._brti_price else "none"
+                cl = f"${self._chainlink_price:,.0f}" if self._chainlink_price else "none"
+                ks_pool = f"live={self._ks_pool.is_live}" if self._ks_pool else "none"
+                pm_pool = f"live={self._pm_pool.is_live}" if self._pm_pool else "none"
+                log.info(
+                    "HEARTBEAT: ks_recv=%s pm_recv=%s aligned=%s/%d brti=%s cl=%s ks_pool=%s pm_pool=%s push=#%d stale=ks:%s/pm:%s",
+                    ks_age, pm_age, buf_age, len(self._oracle_buf.ticks),
+                    brti, cl, ks_pool, pm_pool,
+                    self._push_count, self._ks_stale_logged, self._pm_stale_logged,
+                )
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                log.exception("Heartbeat error")
 
     async def _model_compute_loop(self):
         """Periodically recompute models and cache serialized state for frontend."""
@@ -1150,6 +1177,9 @@ class BtcStreamManager:
         elif msg_type == "error":
             log.warning("Kalshi WS error msg: %s", data)
 
+    _push_count: int = 0
+    _push_slow_threshold: float = 0.05  # log if push takes > 50ms
+
     async def _push_update(self, force: bool = False):
         """Build merged snapshot and send to callback (throttled)."""
         now = asyncio.get_event_loop().time()
@@ -1157,6 +1187,7 @@ class BtcStreamManager:
             return
         self._last_push_time = now
 
+        t0 = time.monotonic()
         self._check_staleness()
 
         snapshot = {
@@ -1190,10 +1221,26 @@ class BtcStreamManager:
             # Model state (recomputed every 10s, serialized for frontend)
             "model_state": self._cached_model_dict,
         }
+        t_build = time.monotonic()
         try:
             await self._on_update(snapshot)
         except Exception as e:
             log.warning("BTC stream callback error: %s", e)
+        t_send = time.monotonic()
+
+        self._push_count += 1
+        build_ms = (t_build - t0) * 1000
+        send_ms = (t_send - t_build) * 1000
+        total_ms = (t_send - t0) * 1000
+        if total_ms > self._push_slow_threshold * 1000:
+            log.warning("PUSH SLOW: #%d build=%.1fms send=%.1fms total=%.1fms",
+                        self._push_count, build_ms, send_ms, total_ms)
+        elif self._push_count % 100 == 1:
+            # Log every 100th push at INFO for heartbeat
+            log.info("PUSH #%d: build=%.1fms send=%.1fms ks_stale=%s pm_stale=%s ticks=%d",
+                     self._push_count, build_ms, send_ms,
+                     self._ks_stale_logged, self._pm_stale_logged,
+                     len(self._oracle_buf.ticks))
 
     def _apply_kalshi_ticker(self, data: dict):
         """Apply a Kalshi ticker update to our stored data."""
