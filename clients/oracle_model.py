@@ -528,7 +528,7 @@ def calibrate_copula(
 
 MODEL_D_MIN_ALPHA = 0.02    # minimum EV threshold ($) to trigger trade
 MODEL_D_MIN_TIME_S = 59     # reject if < 59s to expiry
-KALSHI_TAKER_FEE = 0.07     # Kalshi taker fee: 7c per contract on fill
+KALSHI_FEE_RATE = 0.07      # Kalshi fee: 0.07 * C * P * (1-P), C=contracts
 
 
 @dataclass
@@ -542,7 +542,8 @@ class ModelDResult:
     # Cost breakdown per strategy
     cost_a: float            # total premium Strategy A (C_k + C_p)
     cost_b: float            # total premium Strategy B
-    fee_ks: float            # Kalshi fee (same for both)
+    fee_ks_a: float          # Kalshi fee for Strategy A: 0.07*P*(1-P)
+    fee_ks_b: float          # Kalshi fee for Strategy B: 0.07*P*(1-P)
     fee_pm_a: float          # PM fee for Strategy A
     fee_pm_b: float          # PM fee for Strategy B
     # Decision
@@ -668,14 +669,17 @@ def model_d_execute(
         gates["model_c"] = (True, "ok")
 
     # Compute fees
-    fee_ks = KALSHI_TAKER_FEE
-    fee_pm_rate = fee_pm_bps / 10000.0 if fee_pm_bps > 0 else 0.02  # default 2%
+    # Kalshi: Fee = 0.07 * C * P * (1-P), C=1 contract, P=ask price
+    fee_ks_a = KALSHI_FEE_RATE * prices_a.ks_ask * (1.0 - prices_a.ks_ask)
+    fee_ks_b = KALSHI_FEE_RATE * prices_b.ks_ask * (1.0 - prices_b.ks_ask)
+    # PM: fee = ask * (fee_bps / 10000)
+    fee_pm_rate = fee_pm_bps / 10000.0 if fee_pm_bps > 0 else 0.02
+    fee_pm_a = prices_a.pm_ask * fee_pm_rate
+    fee_pm_b = prices_b.pm_ask * fee_pm_rate
 
     # Compute EV for both strategies
     cost_a = prices_a.ks_ask + prices_a.pm_ask
     cost_b = prices_b.ks_ask + prices_b.pm_ask
-    fee_pm_a = prices_a.pm_ask * fee_pm_rate
-    fee_pm_b = prices_b.pm_ask * fee_pm_rate
 
     ev_a_raw = -999.0
     ev_b_raw = -999.0
@@ -683,10 +687,10 @@ def model_d_execute(
     ev_b = -999.0
     if model_c_a and cost_a > 0:
         ev_a_raw = model_d_ev(model_c_a, cost_a, 0.0, 0.0)
-        ev_a = model_d_ev(model_c_a, cost_a, fee_ks, fee_pm_a)
+        ev_a = model_d_ev(model_c_a, cost_a, fee_ks_a, fee_pm_a)
     if model_c_b and cost_b > 0:
         ev_b_raw = model_d_ev(model_c_b, cost_b, 0.0, 0.0)
-        ev_b = model_d_ev(model_c_b, cost_b, fee_ks, fee_pm_b)
+        ev_b = model_d_ev(model_c_b, cost_b, fee_ks_b, fee_pm_b)
 
     # Gate 5: EV threshold
     best_ev = max(ev_a, ev_b)
@@ -709,7 +713,8 @@ def model_d_execute(
         ev_b=round(ev_b, 6),
         cost_a=round(cost_a, 4),
         cost_b=round(cost_b, 4),
-        fee_ks=round(fee_ks, 4),
+        fee_ks_a=round(fee_ks_a, 4),
+        fee_ks_b=round(fee_ks_b, 4),
         fee_pm_a=round(fee_pm_a, 4),
         fee_pm_b=round(fee_pm_b, 4),
         chosen=chosen,
@@ -1031,7 +1036,8 @@ class ModelState:
                 "ev_a_raw": sf(md.ev_a_raw), "ev_b_raw": sf(md.ev_b_raw),
                 "ev_a": sf(md.ev_a), "ev_b": sf(md.ev_b), "chosen": md.chosen, "ev": sf(md.ev),
                 "cost_a": sf(md.cost_a), "cost_b": sf(md.cost_b),
-                "fee_ks": sf(md.fee_ks), "fee_pm_a": sf(md.fee_pm_a), "fee_pm_b": sf(md.fee_pm_b),
+                "fee_ks_a": sf(md.fee_ks_a), "fee_ks_b": sf(md.fee_ks_b),
+                "fee_pm_a": sf(md.fee_pm_a), "fee_pm_b": sf(md.fee_pm_b),
                 "gates": gates_dict, "all_gates_passed": bool(md.all_gates_passed),
             }
         return d
