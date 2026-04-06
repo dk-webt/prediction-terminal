@@ -592,10 +592,12 @@ def model_d_execute(
     model_c_b: ModelCResult | None,
     prices_a: StrategyPrices,
     prices_b: StrategyPrices,
-    fee_pm_bps: float,
     adf: 'ADFResult | None',
     ou: 'OUParams | None',
     tau: float | None,
+    pm_fee_rate: float = 0.02,
+    pm_fee_exponent: int = 1,
+    pm_fee_rebate: float = 0.0,
     min_alpha: float = MODEL_D_MIN_ALPHA,
     oracle_stale: bool = False,
     prices_stale: bool = False,
@@ -609,7 +611,9 @@ def model_d_execute(
         model_c_b: Model C output for Strategy B
         prices_a: ask prices for Strategy A (KS YES + PM NO/DOWN)
         prices_b: ask prices for Strategy B (KS NO + PM UP)
-        fee_pm_bps: Polymarket fee rate in basis points (e.g. 200 = 2%)
+        pm_fee_rate: Polymarket fee rate (e.g. 0.072 = 7.2%)
+        pm_fee_exponent: fee exponent (1 for linear)
+        pm_fee_rebate: maker rebate rate (e.g. 0.2 = 20% rebate)
         adf: ADF test result from Model B
         ou: OU parameters from Model B
         tau: time remaining as fraction of 15-min window (0-1)
@@ -672,10 +676,13 @@ def model_d_execute(
     # Kalshi: Fee = 0.07 * C * P * (1-P), C=1 contract, P=ask price
     fee_ks_a = KALSHI_FEE_RATE * prices_a.ks_ask * (1.0 - prices_a.ks_ask)
     fee_ks_b = KALSHI_FEE_RATE * prices_b.ks_ask * (1.0 - prices_b.ks_ask)
-    # PM: fee = ask * (fee_bps / 10000)
-    fee_pm_rate = fee_pm_bps / 10000.0 if fee_pm_bps > 0 else 0.02
-    fee_pm_a = prices_a.pm_ask * fee_pm_rate
-    fee_pm_b = prices_b.pm_ask * fee_pm_rate
+    # PM: Fee = rate * P^exp * (1-P)^exp * (1 - rebateRate)
+    # feeSchedule: {rate: 0.072, exponent: 1, rebateRate: 0.2, takerOnly: true}
+    pm_net = pm_fee_rate * (1.0 - pm_fee_rebate)
+    p_a = prices_a.pm_ask
+    p_b = prices_b.pm_ask
+    fee_pm_a = pm_net * (p_a ** pm_fee_exponent) * ((1.0 - p_a) ** pm_fee_exponent) if p_a > 0 else 0.0
+    fee_pm_b = pm_net * (p_b ** pm_fee_exponent) * ((1.0 - p_b) ** pm_fee_exponent) if p_b > 0 else 0.0
 
     # Compute EV for both strategies
     cost_a = prices_a.ks_ask + prices_a.pm_ask
@@ -1082,7 +1089,9 @@ class ModelOrchestrator:
         self._ks_no_ask: float = 0.0
         self._pm_up_ask: float = 0.0
         self._pm_down_ask: float = 0.0
-        self._pm_fee_bps: float = 200.0  # default 2%, updated from token metadata
+        self._pm_fee_rate: float = 0.02   # PM fee rate (default 2%)
+        self._pm_fee_exponent: int = 1    # PM fee exponent
+        self._pm_fee_rebate: float = 0.0  # PM maker rebate rate
         self._prices_updated: float = 0.0    # time.time() when prices were last set
 
         # Aligned tick freshness
@@ -1120,14 +1129,17 @@ class ModelOrchestrator:
 
     def set_prices(self, ks_yes_ask: float, ks_no_ask: float,
                    pm_up_ask: float, pm_down_ask: float,
-                   pm_fee_bps: float = 200.0):
-        """Update live ask prices and PM fee rate for Model D."""
+                   pm_fee_rate: float = 0.02, pm_fee_exponent: int = 1,
+                   pm_fee_rebate: float = 0.0):
+        """Update live ask prices and PM fee schedule for Model D."""
         import time as _time
         self._ks_yes_ask = ks_yes_ask
         self._ks_no_ask = ks_no_ask
         self._pm_up_ask = pm_up_ask
         self._pm_down_ask = pm_down_ask
-        self._pm_fee_bps = pm_fee_bps
+        self._pm_fee_rate = pm_fee_rate
+        self._pm_fee_exponent = pm_fee_exponent
+        self._pm_fee_rebate = pm_fee_rebate
         self._prices_updated = _time.time()
 
     def compute(self, now: float | None = None) -> ModelState:
@@ -1218,8 +1230,10 @@ class ModelOrchestrator:
             model_d_result = model_d_execute(
                 model_c_a=model_c_a, model_c_b=model_c_b,
                 prices_a=prices_a, prices_b=prices_b,
-                fee_pm_bps=self._pm_fee_bps,
                 adf=adf, ou=ou, tau=tau,
+                pm_fee_rate=self._pm_fee_rate,
+                pm_fee_exponent=self._pm_fee_exponent,
+                pm_fee_rebate=self._pm_fee_rebate,
                 oracle_stale=oracle_stale,
                 prices_stale=prices_stale,
                 sigma_stale=sigma_stale,
