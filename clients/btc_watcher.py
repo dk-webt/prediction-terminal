@@ -1255,29 +1255,36 @@ class BtcStreamManager:
                      len(self._oracle_buf.ticks))
 
     def _apply_kalshi_ticker(self, data: dict):
-        """Apply a Kalshi ticker update to our stored data."""
+        """Apply a Kalshi ticker update to our stored data.
+        Only use ticker for last_price/volume/OI — bid/ask comes from the
+        orderbook (snapshot + deltas) which is the authoritative source.
+        The ticker's yes_bid_dollars/yes_ask_dollars can be stale and
+        override correct orderbook-derived values, causing price display bugs.
+        """
         if not self._kalshi_data or self._kalshi_data.get("error"):
             return
 
-        # Ticker gives us direct yes_bid, yes_ask, price, volume, OI
-        yes_bid = _safe_float(data.get("yes_bid_dollars"))
-        yes_ask = _safe_float(data.get("yes_ask_dollars"))
         price = _safe_float(data.get("price_dollars"))
         volume = _safe_float(data.get("volume_fp"))
         oi = _safe_float(data.get("open_interest_fp"))
 
-        if yes_bid:
-            self._kalshi_data["yes_bid"] = yes_bid
-            self._kalshi_data["no_ask"] = round(1.0 - yes_bid, 4)
-        if yes_ask:
-            self._kalshi_data["yes_ask"] = yes_ask
-            self._kalshi_data["no_bid"] = round(1.0 - yes_ask, 4)
         if price:
             self._kalshi_data["last_price"] = price
         if volume:
             self._kalshi_data["volume"] = volume
         if oi:
             self._kalshi_data["open_interest"] = oi
+
+        # Only use ticker bid/ask as fallback when orderbook is empty
+        if not self._ks_ob_yes and not self._ks_ob_no:
+            yes_bid = _safe_float(data.get("yes_bid_dollars"))
+            yes_ask = _safe_float(data.get("yes_ask_dollars"))
+            if yes_bid:
+                self._kalshi_data["yes_bid"] = yes_bid
+                self._kalshi_data["no_ask"] = round(1.0 - yes_bid, 4)
+            if yes_ask:
+                self._kalshi_data["yes_ask"] = yes_ask
+                self._kalshi_data["no_bid"] = round(1.0 - yes_ask, 4)
 
     def _apply_kalshi_orderbook_snapshot(self, data: dict):
         """Apply a Kalshi orderbook snapshot — full book reset."""
