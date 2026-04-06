@@ -1017,7 +1017,7 @@ class BtcStreamManager:
         self._sync_orch_prices()
         return self._model_orch.compute()
 
-    MODEL_COMPUTE_INTERVAL = 10.0  # seconds between model recomputes
+    MODEL_COMPUTE_INTERVAL = 1.0  # seconds between model recomputes
     HEARTBEAT_INTERVAL = 30.0     # seconds between health heartbeat logs
 
     async def _heartbeat_loop(self):
