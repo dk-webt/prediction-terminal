@@ -147,7 +147,7 @@ function OracleAlignmentDbg({ snapshot }: { snapshot: BtcSnapshot }) {
             <span className="btc-dim">OU {'\u03BC'} (equilibrium):</span>
             {ms?.ou ? <span style={mono}>${ms.ou.mu.toFixed(2)}</span> : <span style={mono}>—</span>}
             <span className="btc-dim">OU {'\u03C3'} (volatility):</span>
-            {ms?.ou ? <span style={mono}>${ms.ou.sigma.toFixed(2)}/{'$\\sqrt{s}$'}</span> : <span style={mono}>—</span>}
+            {ms?.ou ? <span style={mono}>${ms.ou.sigma.toFixed(2)}/{'\u221As'}</span> : <span style={mono}>—</span>}
             <span className="btc-dim">Half-life:</span>
             {ms?.ou ? <span style={{ ...mono, color: ms.ou.half_life_s < 300 ? '#00cc44' : ms.ou.half_life_s < 600 ? '#ffaa00' : '#ff4444' }}>{ms.ou.half_life_s.toFixed(1)}s ({(ms.ou.half_life_s / 60).toFixed(1)} min)</span> : <span style={mono}>—</span>}
           </div>
