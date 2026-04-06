@@ -184,18 +184,16 @@ function OracleAlignmentDbg({ snapshot }: { snapshot: BtcSnapshot }) {
             {ms?.model_d ? (
               <>
                 <div style={{ ...grid }}>
-                  <span className="btc-dim">EV Strat A:</span>
+                  <span className="btc-dim">Strat A (KS YES+PM NO):</span>
                   <span style={{ ...mono, color: ms.model_d.ev_a > 0.02 ? '#00cc44' : ms.model_d.ev_a > 0 ? '#ffaa00' : '#ff4444' }}>
-                    ${ms.model_d.ev_a > -100 ? ms.model_d.ev_a.toFixed(4) : 'N/A'}
+                    EV=${ms.model_d.ev_a > -100 ? ms.model_d.ev_a.toFixed(4) : 'N/A'} cost=${ms.model_d.cost_a.toFixed(4)} fees=${(ms.model_d.fee_ks + ms.model_d.fee_pm_a).toFixed(4)}
                   </span>
-                  <span className="btc-dim">EV Strat B:</span>
+                  <span className="btc-dim">Strat B (KS NO+PM YES):</span>
                   <span style={{ ...mono, color: ms.model_d.ev_b > 0.02 ? '#00cc44' : ms.model_d.ev_b > 0 ? '#ffaa00' : '#ff4444' }}>
-                    ${ms.model_d.ev_b > -100 ? ms.model_d.ev_b.toFixed(4) : 'N/A'}
+                    EV=${ms.model_d.ev_b > -100 ? ms.model_d.ev_b.toFixed(4) : 'N/A'} cost=${ms.model_d.cost_b.toFixed(4)} fees=${(ms.model_d.fee_ks + ms.model_d.fee_pm_b).toFixed(4)}
                   </span>
-                  <span className="btc-dim">Fees (KS / PM):</span>
-                  <span style={mono}>${ms.model_d.fee_ks.toFixed(4)} / ${ms.model_d.fee_pm.toFixed(4)}</span>
-                  <span className="btc-dim">Cost (premium):</span>
-                  <span style={mono}>{ms.model_d.cost > 0 ? `$${ms.model_d.cost.toFixed(4)}` : 'N/A'}</span>
+                  <span className="btc-dim">KS taker fee:</span>
+                  <span style={mono}>${ms.model_d.fee_ks.toFixed(4)}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 8, fontSize: 11, marginTop: 4 }}>
                   <span className="btc-dim">Gates:</span>

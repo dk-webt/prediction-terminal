@@ -537,12 +537,15 @@ class ModelDResult:
     # Per-strategy EV
     ev_a: float              # EV for Strategy A (KS YES + PM NO)
     ev_b: float              # EV for Strategy B (KS NO + PM YES)
-    # Cost breakdown for chosen strategy
+    # Cost breakdown per strategy
+    cost_a: float            # total premium Strategy A (C_k + C_p)
+    cost_b: float            # total premium Strategy B
+    fee_ks: float            # Kalshi fee (same for both)
+    fee_pm_a: float          # PM fee for Strategy A
+    fee_pm_b: float          # PM fee for Strategy B
+    # Decision
     chosen: str | None       # "A", "B", or None (no trade)
-    ev: float                # EV of chosen strategy (or best if none chosen)
-    cost: float              # total premium (C_k + C_p)
-    fee_ks: float            # Kalshi fee
-    fee_pm: float            # Polymarket fee
+    ev: float                # EV of best strategy
     # Gate checks
     gates: dict              # {name: (passed: bool, reason: str)}
     all_gates_passed: bool   # True only if ALL gates pass
@@ -690,29 +693,19 @@ def model_d_execute(
 
     # Choose strategy
     chosen = None
-    chosen_ev = best_ev
-    chosen_cost = 0.0
-    chosen_fee_pm = 0.0
-
     if all_passed:
-        if ev_a >= ev_b:
-            chosen = "A"
-            chosen_cost = cost_a
-            chosen_fee_pm = fee_pm_a
-        else:
-            chosen = "B"
-            chosen_cost = cost_b
-            chosen_fee_pm = fee_pm_b
-        chosen_ev = ev_a if chosen == "A" else ev_b
+        chosen = "A" if ev_a >= ev_b else "B"
 
     return ModelDResult(
         ev_a=round(ev_a, 6),
         ev_b=round(ev_b, 6),
-        chosen=chosen,
-        ev=round(chosen_ev, 6),
-        cost=round(chosen_cost, 4),
+        cost_a=round(cost_a, 4),
+        cost_b=round(cost_b, 4),
         fee_ks=round(fee_ks, 4),
-        fee_pm=round(chosen_fee_pm, 4),
+        fee_pm_a=round(fee_pm_a, 4),
+        fee_pm_b=round(fee_pm_b, 4),
+        chosen=chosen,
+        ev=round(best_ev, 6),
         gates=gates,
         all_gates_passed=all_passed,
     )
@@ -1028,7 +1021,8 @@ class ModelState:
             gates_dict = {k: {"passed": bool(v[0]), "reason": str(v[1])} for k, v in md.gates.items()}
             d["model_d"] = {
                 "ev_a": sf(md.ev_a), "ev_b": sf(md.ev_b), "chosen": md.chosen, "ev": sf(md.ev),
-                "cost": sf(md.cost), "fee_ks": sf(md.fee_ks), "fee_pm": sf(md.fee_pm),
+                "cost_a": sf(md.cost_a), "cost_b": sf(md.cost_b),
+                "fee_ks": sf(md.fee_ks), "fee_pm_a": sf(md.fee_pm_a), "fee_pm_b": sf(md.fee_pm_b),
                 "gates": gates_dict, "all_gates_passed": bool(md.all_gates_passed),
             }
         return d

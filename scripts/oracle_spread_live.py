@@ -364,10 +364,10 @@ def _print_model_d(p_ks_above, p_pm_above, strat_a, strat_b):
 
     if d.all_gates_passed and d.chosen:
         signal = f"\033[32m>>> TRADE {d.chosen} <<<\033[0m"
-        cost_str = f"cost=${d.cost:.4f} fee_ks=${d.fee_ks:.4f} fee_pm=${d.fee_pm:.4f}"
     else:
         signal = "\033[31mNO TRADE\033[0m"
-        cost_str = f"A: KS_yes={_ks_yes_ask:.4f}+PM_down={_pm_down_ask:.4f} | B: KS_no={_ks_no_ask:.4f}+PM_up={_pm_up_ask:.4f}"
+    cost_str = (f"A: cost=${d.cost_a:.4f} fees=${d.fee_ks + d.fee_pm_a:.4f} | "
+                f"B: cost=${d.cost_b:.4f} fees=${d.fee_ks + d.fee_pm_b:.4f}")
 
     print(
         f"  ├─ MODEL D  EV_A={ev_a_str}  EV_B={ev_b_str}  → {signal}",

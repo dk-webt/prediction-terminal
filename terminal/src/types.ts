@@ -144,7 +144,8 @@ export interface ModelStateData {
   model_c_b?: { p_ww: number; p_wl: number; p_lw: number; p_ll: number }
   model_d?: {
     ev_a: number; ev_b: number; chosen: string | null; ev: number
-    cost: number; fee_ks: number; fee_pm: number
+    cost_a: number; cost_b: number
+    fee_ks: number; fee_pm_a: number; fee_pm_b: number
     gates: Record<string, { passed: boolean; reason: string }>
     all_gates_passed: boolean
   }
