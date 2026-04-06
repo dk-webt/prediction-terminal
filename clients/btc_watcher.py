@@ -1019,15 +1019,34 @@ class BtcStreamManager:
 
     async def _model_compute_loop(self):
         """Periodically recompute models and cache serialized state for frontend."""
+        log.info("Model compute loop started (interval=%.0fs)", self.MODEL_COMPUTE_INTERVAL)
         while self._running:
             try:
                 await asyncio.sleep(self.MODEL_COMPUTE_INTERVAL)
                 state = self.get_model_state()
                 self._cached_model_dict = state.to_dict()
+                # Log model state summary at INFO on first compute, then DEBUG
+                n = state.n_aligned_ticks
+                has_adf = state.adf is not None
+                has_copula = state.copula is not None
+                has_d = state.model_d is not None
+                chosen = state.model_d.chosen if state.model_d else None
+                stale = "STALE" if state.oracle_stale else "ok"
+                log.info(
+                    "MODEL: ticks=%d adf=%s copula=%s model_d=%s chosen=%s oracle=%s sigma=%s prices=%s",
+                    n,
+                    f"p={state.adf.pvalue:.4f}" if has_adf else "wait",
+                    f"rho={state.copula.rho:.3f}" if has_copula else "wait",
+                    f"ev={state.model_d.ev:.4f}" if has_d else "wait",
+                    chosen or "none",
+                    stale,
+                    f"{state.sigma_age_s:.0f}s" if state.sigma_age_s else "none",
+                    f"{state.prices_age_s:.0f}s" if state.prices_age_s else "none",
+                )
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                log.warning("Model compute error: %s", e)
+            except Exception:
+                log.exception("Model compute loop error")
 
     def _get_oracle_aligned_summary(self) -> dict | None:
         """Summary of oracle alignment buffer for snapshot."""

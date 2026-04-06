@@ -165,7 +165,11 @@ class DeribitPoller:
 
     async def fetch_once(self):
         """Fetch IV once and update state. Can be called manually."""
-        async with aiohttp.ClientSession() as session:
+        # Disable auto-decompress to avoid brotli issues on some platforms
+        async with aiohttp.ClientSession(
+            headers={"Accept-Encoding": "gzip, deflate"},
+            auto_decompress=True,
+        ) as session:
             # Try 0DTE first (more relevant for short-dated), fall back to DVOL
             dte = await _fetch_0dte_iv(session)
             dvol = await _fetch_dvol(session)
