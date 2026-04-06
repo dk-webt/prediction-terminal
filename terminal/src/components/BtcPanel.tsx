@@ -158,6 +158,10 @@ function OracleAlignmentDbg({ snapshot }: { snapshot: BtcSnapshot }) {
                 <span style={{ ...mono, color: ms.model_d.ev_b > 0.02 ? '#00cc44' : ms.model_d.ev_b > 0 ? '#ffaa00' : '#ff4444' }}>
                   ${ms.model_d.ev_b > -100 ? ms.model_d.ev_b.toFixed(4) : 'N/A'}
                 </span>
+                <span className="btc-dim">Fees (KS taker / PM):</span>
+                <span style={mono}>${ms.model_d.fee_ks.toFixed(4)} / ${ms.model_d.fee_pm.toFixed(4)}</span>
+                <span className="btc-dim">Cost (premium):</span>
+                <span style={mono}>{ms.model_d.cost > 0 ? `$${ms.model_d.cost.toFixed(4)}` : 'N/A'}</span>
               </div>
               <div style={{ display: 'flex', gap: 8, fontSize: 11, marginTop: 4 }}>
                 <span className="btc-dim">Gates:</span>
@@ -170,7 +174,7 @@ function OracleAlignmentDbg({ snapshot }: { snapshot: BtcSnapshot }) {
               <div style={{ marginTop: 4, fontSize: 12, fontWeight: 'bold' }}>
                 {ms.model_d.all_gates_passed && ms.model_d.chosen ? (
                   <span style={{ color: '#00ff44' }}>
-                    TRADE {ms.model_d.chosen} — EV=${ms.model_d.ev.toFixed(4)} cost=${ms.model_d.cost.toFixed(4)} fees=${(ms.model_d.fee_ks + ms.model_d.fee_pm).toFixed(4)}
+                    TRADE {ms.model_d.chosen} — EV=${ms.model_d.ev.toFixed(4)}
                   </span>
                 ) : (
                   <span style={{ color: '#ff4444' }}>NO TRADE</span>

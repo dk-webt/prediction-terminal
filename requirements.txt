@@ -4,6 +4,8 @@ rich
 python-dotenv
 google-genai
 numpy
+statsmodels
+aiohttp
 fastapi
 uvicorn[standard]
 websockets
