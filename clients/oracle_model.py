@@ -1237,6 +1237,49 @@ class ModelOrchestrator:
         self._last_compute_ts = now
         return state
 
+    def compute_model_a_fast(self) -> dict | None:
+        """
+        Compute only Model A (cheap) for real-time updates between full computes.
+        Returns a dict with model_a_ks and model_a_pm, or None if inputs missing.
+        """
+        import time as _time
+        now = _time.time()
+
+        brti = self._brti_prices[-1] if self._brti_prices else None
+        cl = self._cl_prices[-1] if self._cl_prices else None
+        if not brti or not cl or not self._sigma_15m:
+            return None
+        if self._window_end_ts <= 0:
+            return None
+
+        remaining = max(0, self._window_end_ts - now)
+        tau = min(1.0, remaining / (15 * 60))
+        if tau <= 0:
+            return None
+
+        # Staleness check
+        oracle_age = (now - self._last_tick_ts) if self._last_tick_ts > 0 else None
+        if oracle_age is None or oracle_age > self.ORACLE_STALE_S:
+            return None
+        sigma_age = (now - self._sigma_updated) if self._sigma_updated > 0 else None
+        if sigma_age is None or sigma_age > self.SIGMA_STALE_S:
+            return None
+
+        sf = ModelState._safe_float
+        result = {"tau": round(tau, 4), "tau_min": round(tau * 15, 1)}
+
+        if self._ks_strike > 0:
+            r = model_a_probability(S=brti, K=self._ks_strike, tau=tau, sigma_15m=self._sigma_15m)
+            if r:
+                result["model_a_ks"] = {"p_above": sf(r.p_above), "p_below": sf(r.p_below), "d2": sf(r.d2)}
+
+        if self._pm_strike > 0:
+            r = model_a_probability(S=cl, K=self._pm_strike, tau=tau, sigma_15m=self._sigma_15m)
+            if r:
+                result["model_a_pm"] = {"p_above": sf(r.p_above), "p_below": sf(r.p_below), "d2": sf(r.d2)}
+
+        return result
+
     @property
     def last_state(self) -> ModelState | None:
         """Most recently computed state (None if compute() never called)."""

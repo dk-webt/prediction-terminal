@@ -1078,6 +1078,20 @@ class BtcStreamManager:
             except Exception:
                 log.exception("Model compute loop error")
 
+    def _get_model_state_with_live_a(self) -> dict | None:
+        """Merge real-time Model A into the cached model state dict."""
+        base = self._cached_model_dict
+        live_a = self._model_orch.compute_model_a_fast()
+        if not base and not live_a:
+            return None
+        if not base:
+            return live_a
+        if not live_a:
+            return base
+        # Shallow merge: live Model A overwrites cached
+        merged = {**base, **live_a}
+        return merged
+
     def _get_oracle_aligned_summary(self) -> dict | None:
         """Summary of oracle alignment buffer for snapshot."""
         latest = self._oracle_buf.get_latest()
@@ -1218,8 +1232,8 @@ class BtcStreamManager:
             "oracle_aligned": self._get_oracle_aligned_summary(),
             # Deribit IV for Model A
             "deribit": self._deribit_poller.get_status() if self._deribit_poller else None,
-            # Model state (recomputed every 10s, serialized for frontend)
-            "model_state": self._cached_model_dict,
+            # Model state: heavy models cached (10s), Model A computed inline (real-time)
+            "model_state": self._get_model_state_with_live_a(),
         }
         t_build = time.monotonic()
         try:
