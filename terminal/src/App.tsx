@@ -190,6 +190,25 @@ export default function App() {
         state.setProgressMsg(`Debug log downloaded (${logText.split('\n').length} lines)`)
         state.setLoading(false)
         setTimeout(() => useStore.getState().setProgressMsg(''), 3000)
+      } else if (msg.type === 'btc_pm_log_status') {
+        const enabled = msg.enabled as boolean
+        const state = useStore.getState()
+        state.setProgressMsg(`PM price logging ${enabled ? 'ON' : 'OFF'}`)
+        state.setLoading(false)
+        setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
+      } else if (msg.type === 'btc_pm_log_data') {
+        const logText = msg.log as string
+        const blob = new Blob([logText], { type: 'text/csv' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'pm_price_data.csv'
+        a.click()
+        URL.revokeObjectURL(url)
+        const state = useStore.getState()
+        state.setProgressMsg(`PM price log downloaded (${logText.split('\n').length} lines)`)
+        state.setLoading(false)
+        setTimeout(() => useStore.getState().setProgressMsg(''), 3000)
       } else if (msg.type === 'ate_status') {
         const state = useStore.getState()
         const enabled = msg.enabled as boolean
@@ -895,6 +914,25 @@ export default function App() {
               ? 'HARD REFRESH: re-fetching contracts + reconnecting all WebSockets...'
               : 'Refreshing KS + PM contracts (in-place swap)...'
             )
+          } else if (btcSub === 'LOG') {
+            const target = (parts[2] || '').toUpperCase()
+            if (target === 'PM' || target === 'PM_PRICE_DATA') {
+              const action = (parts[3] || '').toUpperCase()
+              if (action === 'ON' || action === 'OFF') {
+                manager.sendBtc({ type: 'btc_log_pm', action: action.toLowerCase() })
+                setProgressMsg(`PM price logging ${action}...`)
+                setTimeout(() => useStore.getState().setProgressMsg(''), 2000)
+              } else if (action === 'CLEAR') {
+                manager.sendBtc({ type: 'btc_log_pm', action: 'clear' })
+                setProgressMsg('Clearing PM price log...')
+              } else {
+                setLoading(true)
+                setProgressMsg('Fetching PM price log...')
+                manager.sendBtc({ type: 'btc_log_pm', action: 'get' })
+              }
+            } else {
+              setErrorMsg('Usage: BTC LOG PM [ON|OFF|CLEAR] (no arg = download)')
+            }
           } else {
             setActiveView('BTC')
             setCenterView('BTC')

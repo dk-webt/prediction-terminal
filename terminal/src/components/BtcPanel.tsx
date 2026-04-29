@@ -343,7 +343,7 @@ const CHART_OPTIONS = {
     horzLines: { color: '#2a1a00' },
   },
   crosshair: { mode: CrosshairMode.Normal },
-  timeScale: { timeVisible: true, secondsVisible: false },
+  timeScale: { timeVisible: true, secondsVisible: true },
   rightPriceScale: { borderColor: '#2a1a00' },
 } as const
 

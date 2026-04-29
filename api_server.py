@@ -418,6 +418,9 @@ async def _btc_broadcast(snapshot: dict):
     for ws in dead:
         _btc_subscribers.discard(ws)
 
+    # PM price CSV log (no-op when disabled)
+    _log_pm_prices(snapshot)
+
     # Check ATE trigger on every broadcast
     if _ate_enabled:
         await _ate_check(snapshot)
@@ -1086,6 +1089,25 @@ async def websocket_btc(websocket: WebSocket):
                 elif action == "clear":
                     open(BTC_DEBUG_LOG, "w").close()
                     await websocket.send_json({"type": "btc_debug_log", "log": "(cleared)"})
+
+            elif cmd == "btc_log_pm":
+                action = data.get("action", "get")
+                if action == "on":
+                    _set_pm_price_log(True)
+                    await websocket.send_json({"type": "btc_pm_log_status", "enabled": True})
+                elif action == "off":
+                    _set_pm_price_log(False)
+                    await websocket.send_json({"type": "btc_pm_log_status", "enabled": False})
+                elif action == "get":
+                    try:
+                        with open(PM_PRICE_LOG, "r") as f:
+                            log_text = f.read()
+                    except FileNotFoundError:
+                        log_text = "(no log file yet — enable with BTC LOG PM ON)"
+                    await websocket.send_json({"type": "btc_pm_log_data", "log": log_text})
+                elif action == "clear":
+                    open(PM_PRICE_LOG, "w").close()
+                    await websocket.send_json({"type": "btc_pm_log_data", "log": "(cleared)"})
             else:
                 await websocket.send_json({"type": "error", "msg": f"Unknown btc cmd: {cmd}"})
 
@@ -1310,6 +1332,69 @@ async def clear_btc_debug_log():
         return {"status": "cleared"}
     except Exception as e:
         return {"status": "error", "msg": str(e)}
+
+
+# ── PM price data log (CSV) ────────────────────────────────────────────────────
+
+PM_PRICE_LOG = os.path.join(os.path.dirname(__file__), "pm_price_data.log")
+_pm_price_log_enabled = False
+PM_PRICE_LOG_HEADER = "ts,window_end,up_bid,up_ask,down_bid,down_ask,brti,chainlink,strike,rolling\n"
+
+
+def _set_pm_price_log(enabled: bool):
+    """Enable or disable PM bid/ask CSV logging."""
+    global _pm_price_log_enabled
+    if enabled and not _pm_price_log_enabled:
+        # Write header if file is new or empty
+        try:
+            need_header = not os.path.exists(PM_PRICE_LOG) or os.path.getsize(PM_PRICE_LOG) == 0
+        except OSError:
+            need_header = True
+        if need_header:
+            try:
+                with open(PM_PRICE_LOG, "a") as f:
+                    f.write(PM_PRICE_LOG_HEADER)
+            except Exception as e:
+                log.warning("PM price log: failed to write header: %s", e)
+        _pm_price_log_enabled = True
+        log.info("PM price logging ENABLED -> %s", PM_PRICE_LOG)
+    elif not enabled and _pm_price_log_enabled:
+        _pm_price_log_enabled = False
+        log.info("PM price logging DISABLED")
+
+
+def _log_pm_prices(snapshot: dict):
+    """Append one CSV row of PM bid/ask + BRTI/Chainlink/strike for the snapshot."""
+    if not _pm_price_log_enabled:
+        return
+    try:
+        pm = snapshot.get("polymarket", {}) or {}
+        up_bid = pm.get("up_bid")
+        up_ask = pm.get("up_ask")
+        down_bid = pm.get("down_bid")
+        down_ask = pm.get("down_ask")
+        # Skip rows where we have nothing to log
+        if up_bid is None and up_ask is None and down_bid is None and down_ask is None:
+            return
+        ts = snapshot.get("timestamp", "")
+        window_end = pm.get("window_end") or pm.get("end_time") or ""
+        brti = snapshot.get("btc_coinbase")
+        chainlink = snapshot.get("btc_chainlink")
+        strike = pm.get("floor_strike") or pm.get("strike") or ""
+        rolling = "1" if snapshot.get("rolling") else "0"
+
+        def _fmt(v):
+            return "" if v is None else str(v)
+
+        row = ",".join([
+            ts, str(window_end),
+            _fmt(up_bid), _fmt(up_ask), _fmt(down_bid), _fmt(down_ask),
+            _fmt(brti), _fmt(chainlink), str(strike), rolling,
+        ]) + "\n"
+        with open(PM_PRICE_LOG, "a") as f:
+            f.write(row)
+    except Exception as e:
+        log.debug("PM price log write failed: %s", e)
 
 
 if __name__ == "__main__":
